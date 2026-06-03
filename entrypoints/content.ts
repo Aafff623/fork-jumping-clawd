@@ -1,6 +1,16 @@
 import { browser } from 'wxt/browser';
+import {
+  DEFAULT_BACKDROP_BLUR_PX,
+  getStoredBackdropBlur,
+  normalizeBackdropBlur,
+  readBackdropBlurChange,
+} from '../src/extension/backdrop-blur';
+import {
+  OPEN_GAME_MESSAGE,
+  SET_BACKDROP_BLUR_MESSAGE,
+  type SetBackdropBlurMessage,
+} from '../src/extension/messages';
 
-const OPEN_GAME_MESSAGE = 'happy-clawd:open-game';
 const GAME_PAGE = '/game.html';
 const OVERLAY_ID = 'happy-clawd-game-overlay';
 
@@ -12,12 +22,19 @@ type SavedScrollStyles = {
 let overlayHost: HTMLDivElement | null = null;
 let overlayFrame: HTMLIFrameElement | null = null;
 let savedScrollStyles: SavedScrollStyles | null = null;
+let backdropBlurPx = DEFAULT_BACKDROP_BLUR_PX;
+let backdropBlurLoad: Promise<number> | null = null;
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
 
 const isOpenGameMessage = (message: unknown) =>
   isObject(message) && message.type === OPEN_GAME_MESSAGE;
+
+const isSetBackdropBlurMessage = (
+  message: unknown,
+): message is SetBackdropBlurMessage =>
+  isObject(message) && message.type === SET_BACKDROP_BLUR_MESSAGE;
 
 const isCloseGameMessage = (message: unknown) =>
   isObject(message) &&
@@ -37,6 +54,31 @@ const setImportantStyle = (
   value: string,
 ) => {
   element.style.setProperty(property, value, 'important');
+};
+
+const applyBackdropBlur = () => {
+  overlayHost?.style.setProperty(
+    '--happy-clawd-backdrop-blur',
+    `${backdropBlurPx}px`,
+  );
+};
+
+const setBackdropBlur = (value: unknown) => {
+  backdropBlurPx = normalizeBackdropBlur(value);
+  applyBackdropBlur();
+
+  return backdropBlurPx;
+};
+
+const loadBackdropBlur = () => {
+  backdropBlurLoad ??= getStoredBackdropBlur()
+    .then(setBackdropBlur)
+    .catch((error) => {
+      console.warn('Failed to load Happy Clawd backdrop blur setting', error);
+      return backdropBlurPx;
+    });
+
+  return backdropBlurLoad;
 };
 
 const lockPageScroll = () => {
@@ -83,6 +125,7 @@ const closeGameOverlay = () => {
 const createOverlayHost = () => {
   const host = document.createElement('div');
   host.id = OVERLAY_ID;
+  host.style.setProperty('--happy-clawd-backdrop-blur', `${backdropBlurPx}px`);
   setImportantStyle(host, 'position', 'fixed');
   setImportantStyle(host, 'inset', '0');
   setImportantStyle(host, 'width', '100vw');
@@ -113,8 +156,8 @@ const createOverlayHost = () => {
         background:
           linear-gradient(180deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.08)),
           rgba(255, 255, 255, 0.12);
-        -webkit-backdrop-filter: blur(14px) saturate(1.1);
-        backdrop-filter: blur(14px) saturate(1.1);
+        -webkit-backdrop-filter: blur(var(--happy-clawd-backdrop-blur, 2px)) saturate(1.1);
+        backdrop-filter: blur(var(--happy-clawd-backdrop-blur, 2px)) saturate(1.1);
       }
 
       iframe {
@@ -178,7 +221,9 @@ const createOverlayHost = () => {
   return { host, iframe };
 };
 
-const openGameOverlay = () => {
+const openGameOverlay = async () => {
+  await loadBackdropBlur();
+
   if (overlayHost?.isConnected) {
     focusGameFrame();
     return 'already-open';
@@ -199,11 +244,13 @@ export default defineContentScript({
   matchAboutBlank: true,
   runAt: 'document_idle',
   main(ctx) {
+    void loadBackdropBlur();
+
     const handleKeyDown = (event: KeyboardEvent) => {
       if (isOpenGameShortcut(event)) {
         event.preventDefault();
         event.stopImmediatePropagation();
-        openGameOverlay();
+        void openGameOverlay();
         return;
       }
 
@@ -225,25 +272,48 @@ export default defineContentScript({
     };
 
     const handleRuntimeMessage = (message: unknown) => {
-      if (!isOpenGameMessage(message)) {
+      if (isOpenGameMessage(message)) {
+        return openGameOverlay().then((state) => ({
+          ok: true,
+          state,
+        }));
+      }
+
+      if (isSetBackdropBlurMessage(message)) {
+        return Promise.resolve({
+          ok: true,
+          blurPx: setBackdropBlur(message.blurPx),
+        });
+      }
+
+      return undefined;
+    };
+
+    const handleStorageChange = (
+      changes: Record<string, { newValue?: unknown }>,
+      areaName: string,
+    ) => {
+      if (areaName !== 'local') {
         return;
       }
 
-      return Promise.resolve({
-        ok: true,
-        state: openGameOverlay(),
-      });
+      const blurPx = readBackdropBlurChange(changes);
+      if (blurPx !== null) {
+        setBackdropBlur(blurPx);
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown, true);
     window.addEventListener('message', handleWindowMessage);
     browser.runtime.onMessage.addListener(handleRuntimeMessage);
+    browser.storage.onChanged.addListener(handleStorageChange);
 
     ctx.onInvalidated(() => {
       closeGameOverlay();
       window.removeEventListener('keydown', handleKeyDown, true);
       window.removeEventListener('message', handleWindowMessage);
       browser.runtime.onMessage.removeListener(handleRuntimeMessage);
+      browser.storage.onChanged.removeListener(handleStorageChange);
     });
   },
 });

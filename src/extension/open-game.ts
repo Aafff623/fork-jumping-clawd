@@ -1,6 +1,6 @@
 import { browser } from 'wxt/browser';
+import { OPEN_GAME_MESSAGE } from './messages';
 
-export const OPEN_GAME_MESSAGE = 'happy-clawd:open-game';
 const GAME_PAGE = '/game.html';
 const CONTENT_SCRIPT_PUBLIC_FILE = '/content-scripts/content.js';
 const CONTENT_SCRIPT_INJECTION_FILE =

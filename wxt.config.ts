@@ -5,7 +5,7 @@ export default defineConfig({
   manifest: {
     name: 'Happy Clawd',
     description: 'Play Happy Clawd on the current page.',
-    permissions: ['activeTab', 'scripting'],
+    permissions: ['activeTab', 'scripting', 'storage'],
     web_accessible_resources: [
       {
         resources: ['game.html'],
