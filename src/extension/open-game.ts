@@ -9,9 +9,9 @@ import {
 } from './messages';
 
 const GAME_PAGE = '/game.html';
-const CONTENT_SCRIPT_PUBLIC_FILE = '/content-scripts/content.js';
-const CONTENT_SCRIPT_INJECTION_FILE =
-  'content-scripts/content.js' as typeof CONTENT_SCRIPT_PUBLIC_FILE;
+const PAGE_GAME_OVERLAY_SCRIPT_PUBLIC_FILE = '/page-game-overlay.js';
+const PAGE_GAME_OVERLAY_SCRIPT_INJECTION_FILE =
+  PAGE_GAME_OVERLAY_SCRIPT_PUBLIC_FILE.slice(1) as typeof PAGE_GAME_OVERLAY_SCRIPT_PUBLIC_FILE;
 
 export type GameOverlayState = {
   ok: true;
@@ -57,21 +57,6 @@ const getStandaloneGameUrl = (mode: GameMode) => {
   return url.toString();
 };
 
-const assertContentScriptIsBundled = () => {
-  const manifest = browser.runtime.getManifest();
-  const contentScript = manifest.content_scripts?.find((script) =>
-    script.js?.some(
-      (file) =>
-        file === CONTENT_SCRIPT_PUBLIC_FILE ||
-        file === CONTENT_SCRIPT_PUBLIC_FILE.slice(1),
-    ),
-  );
-
-  if (!contentScript) {
-    throw new Error('Jumping Clawd content script is missing from the manifest');
-  }
-};
-
 const sendOpenGameMessage = (tabId: number, mode: GameMode) =>
   browser.tabs.sendMessage(tabId, {
     type: OPEN_GAME_MESSAGE,
@@ -102,11 +87,9 @@ const injectContentScript = async (tabId: number) => {
     throw new Error('The scripting API is unavailable');
   }
 
-  assertContentScriptIsBundled();
-
   await browser.scripting.executeScript({
     target: { tabId },
-    files: [CONTENT_SCRIPT_INJECTION_FILE],
+    files: [PAGE_GAME_OVERLAY_SCRIPT_INJECTION_FILE],
   });
 };
 

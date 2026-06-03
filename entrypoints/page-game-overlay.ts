@@ -1,4 +1,5 @@
 import { browser } from 'wxt/browser';
+import { defineUnlistedScript } from 'wxt/utils/define-unlisted-script';
 import {
   DEFAULT_BACKDROP_BLUR_PX,
   getStoredBackdropBlur,
@@ -22,6 +23,7 @@ const OVERLAY_ID = 'jumping-clawd-game-overlay';
 const PAGE_SURFACE_SEARCH_PARAM = 'surface';
 const GAME_MODE_SEARCH_PARAM = 'mode';
 const CONTRAST_SWITCH_LUMINANCE = 0.179;
+const CLEANUP_GLOBAL_KEY = '__jumpingClawdOverlayCleanup__';
 const BLOCKED_PAGE_INPUT_EVENTS = [
   'beforeinput',
   'input',
@@ -45,6 +47,10 @@ type SavedScrollStyles = {
   htmlOverflow: string;
 };
 
+type GlobalWithCleanup = typeof globalThis & {
+  [CLEANUP_GLOBAL_KEY]?: () => void;
+};
+
 let overlayHost: HTMLDivElement | null = null;
 let overlayFrame: HTMLIFrameElement | null = null;
 let savedScrollStyles: SavedScrollStyles | null = null;
@@ -54,6 +60,8 @@ let currentGameMode: GameMode = DEFAULT_GAME_MODE;
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
+
+const getCleanupTarget = () => globalThis as GlobalWithCleanup;
 
 const isOpenGameMessage = (message: unknown): message is OpenGameMessage =>
   isObject(message) && message.type === OPEN_GAME_MESSAGE;
@@ -595,11 +603,11 @@ const openGameOverlay = async (gameMode: GameMode = DEFAULT_GAME_MODE) => {
   return 'opened';
 };
 
-export default defineContentScript({
-  matches: ['<all_urls>'],
-  matchAboutBlank: true,
-  runAt: 'document_idle',
-  main(ctx) {
+export default defineUnlistedScript({
+  main() {
+    const cleanupTarget = getCleanupTarget();
+    cleanupTarget[CLEANUP_GLOBAL_KEY]?.();
+
     void loadBackdropBlur();
 
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -710,7 +718,7 @@ export default defineContentScript({
     browser.runtime.onMessage.addListener(handleRuntimeMessage);
     browser.storage.onChanged.addListener(handleStorageChange);
 
-    ctx.onInvalidated(() => {
+    cleanupTarget[CLEANUP_GLOBAL_KEY] = () => {
       closeGameOverlay();
       window.removeEventListener('keydown', handleKeyDown, true);
       window.removeEventListener('keypress', handlePageInputEvent, true);
@@ -721,6 +729,7 @@ export default defineContentScript({
       window.removeEventListener('message', handleWindowMessage);
       browser.runtime.onMessage.removeListener(handleRuntimeMessage);
       browser.storage.onChanged.removeListener(handleStorageChange);
-    });
+      delete cleanupTarget[CLEANUP_GLOBAL_KEY];
+    };
   },
 });
