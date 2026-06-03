@@ -1,10 +1,22 @@
 :root {
-  color-scheme: light;
+  color-scheme: light dark;
   --clawd: #da7756;
   --platform: #111827;
-  --platform-target: #334155;
+  --platform-target: var(--platform);
+  --platform-soft: rgba(17, 24, 39, 0.12);
+  --platform-border: rgba(17, 24, 39, 0.72);
+  --platform-strong: rgba(17, 24, 39, 0.88);
+  --platform-shadow: rgba(17, 24, 39, 0.12);
   --focus: rgba(17, 24, 39, 0.32);
   --danger: #e11d48;
+}
+
+:root[data-page-surface="dark"] {
+  --platform: #ffffff;
+  --platform-soft: rgba(255, 255, 255, 0.14);
+  --platform-border: rgba(255, 255, 255, 0.72);
+  --platform-strong: rgba(255, 255, 255, 0.9);
+  --platform-shadow: rgba(255, 255, 255, 0.22);
 }
 
 * {
@@ -74,7 +86,7 @@ body {
 }
 
 .spikes path {
-  fill: #fff;
+  fill: var(--platform);
   stroke: var(--platform);
   stroke-linejoin: miter;
   stroke-miterlimit: 4;
@@ -86,7 +98,7 @@ body {
   top: calc(var(--spike-height) + clamp(4px, 1.4vw, 10px));
   left: 50%;
   z-index: 8;
-  color: #111827;
+  color: var(--platform);
   font-size: clamp(12px, 3vw, 18px);
   font-weight: 650;
   line-height: 1;
@@ -103,9 +115,9 @@ body {
   width: 10px;
   height: 76px;
   overflow: hidden;
-  border: 1px solid rgba(17, 24, 39, 0.72);
+  border: 1px solid var(--platform-border);
   border-radius: 0;
-  background: rgba(17, 24, 39, 0.12);
+  background: var(--platform-soft);
   opacity: 0;
   pointer-events: none;
   transition: opacity 90ms ease;
@@ -138,7 +150,7 @@ body {
 }
 
 .charge-meter__fill.is-low {
-  border: 1px solid rgba(17, 24, 39, 0.88);
+  border: 1px solid var(--platform-strong);
   background: transparent;
   box-shadow: none;
 }
@@ -229,5 +241,5 @@ body {
 }
 
 .platform.is-current::before {
-  box-shadow: 0 3px 0 rgba(17, 24, 39, 0.12);
+  box-shadow: 0 3px 0 var(--platform-shadow);
 }

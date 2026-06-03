@@ -33,7 +33,6 @@ import {
   LANDING_IMPACT_REFERENCE_SPEED_RATIO,
   MAX_CLAWD_HEIGHT,
   MIN_CLAWD_HEIGHT,
-  PLATFORM_COLOR,
   PLATFORM_SURFACE_MAX_RATIO,
   PLATFORM_SURFACE_MIN_RATIO,
   PLATFORM_VISUAL_THICKNESS_MIN,
@@ -75,6 +74,21 @@ import {
   lerp,
   pickRandom,
 } from "./math.js";
+
+const PAGE_SURFACE_THEMES = new Set(["light", "dark"]);
+const getInitialPageSurfaceTheme = () => {
+  const surfaceTheme = new URLSearchParams(window.location.search).get(
+    "surface",
+  );
+
+  if (PAGE_SURFACE_THEMES.has(surfaceTheme)) {
+    return surfaceTheme;
+  }
+
+  return "light";
+};
+
+document.documentElement.dataset.pageSurface = getInitialPageSurfaceTheme();
 
 const {
   stage,
@@ -252,7 +266,6 @@ const syncSpikes = () => {
     { container: spikes, svg: spikesSvg, path: spikesPath },
     { container: bottomSpikes, svg: bottomSpikesSvg, path: bottomSpikesPath },
   ].forEach((spikeSet) => {
-    spikeSet.container.style.setProperty("--platform", PLATFORM_COLOR);
     spikeSet.svg.setAttribute(
       "viewBox",
       `0 0 ${stageSize.width} ${spikeHeight}`,
@@ -306,7 +319,6 @@ const syncPlatformSizes = () => {
       "--platform-thickness",
       `${platformVisualThickness}px`,
     );
-    platform.style.setProperty("--platform", PLATFORM_COLOR);
   });
 
   syncSpikes();
@@ -836,7 +848,7 @@ const setClawdHitState = (isHit) => {
 const syncHud = () => {
   const chargeFeedback = getChargeFeedback(game.chargePower);
 
-  scoreValue.textContent = String(game.score);
+  scoreValue.textContent = `score: ${game.score}`;
   chargeFill.style.transform = `translateY(${(1 - game.chargePower) * 100}%)`;
   chargeFill.style.setProperty(
     "--charge-color",

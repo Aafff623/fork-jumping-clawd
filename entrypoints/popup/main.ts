@@ -8,7 +8,11 @@ import {
   normalizeBackdropBlur,
   saveStoredBackdropBlur,
 } from '../../src/extension/backdrop-blur';
-import { openGameInActiveTab } from '../../src/extension/open-game';
+import {
+  closeGameInActiveTab,
+  getGameStateInActiveTab,
+  openGameInActiveTab,
+} from '../../src/extension/open-game';
 import { SET_BACKDROP_BLUR_MESSAGE } from '../../src/extension/messages';
 import './style.css';
 
@@ -57,9 +61,14 @@ app.innerHTML = `
       </div>
     </section>
 
-    <button id="start-game" class="start-button" type="button">
-      开始游戏
-    </button>
+    <div class="game-actions" aria-label="游戏控制">
+      <button id="start-game" class="game-button game-button--primary" type="button">
+        开始游戏
+      </button>
+      <button id="exit-game" class="game-button game-button--secondary" type="button">
+        退出游戏
+      </button>
+    </div>
 
     <section class="setting" aria-labelledby="backdrop-blur-label">
       <div class="setting-header">
@@ -87,21 +96,38 @@ app.innerHTML = `
 
 const startButton =
   document.querySelector<HTMLButtonElement>('#start-game');
+const exitButton = document.querySelector<HTMLButtonElement>('#exit-game');
 const backdropBlurSlider =
   document.querySelector<HTMLInputElement>('#backdrop-blur');
 const backdropBlurValue =
   document.querySelector<HTMLOutputElement>('#backdrop-blur-value');
 const statusText = document.querySelector<HTMLParagraphElement>('#status');
 
-if (!startButton || !backdropBlurSlider || !backdropBlurValue || !statusText) {
+if (
+  !startButton ||
+  !exitButton ||
+  !backdropBlurSlider ||
+  !backdropBlurValue ||
+  !statusText
+) {
   throw new Error('Missing popup controls');
 }
 
+type PendingAction = 'loading' | 'starting' | 'exiting' | null;
+
 let currentBackdropBlurPx = DEFAULT_BACKDROP_BLUR_PX;
 let hasAdjustedBackdropBlur = false;
+let isGameOpen = false;
+let pendingAction: PendingAction = 'loading';
 
 const setStatus = (message: string) => {
   statusText.textContent = message;
+};
+
+const renderGameControls = () => {
+  const isBusy = pendingAction !== null;
+  startButton.disabled = isBusy || isGameOpen;
+  exitButton.disabled = isBusy || !isGameOpen;
 };
 
 const isMissingReceiverError = (error: unknown) => {
@@ -163,19 +189,67 @@ void getStoredBackdropBlur()
     console.warn('Failed to load Happy Clawd backdrop blur setting', error);
   });
 
+const syncGameState = async () => {
+  pendingAction = 'loading';
+  renderGameControls();
+
+  try {
+    const state = await getGameStateInActiveTab();
+    isGameOpen = state.isOpen;
+    setStatus(isGameOpen ? '游戏已打开' : '');
+  } catch (error) {
+    console.warn('Failed to read Happy Clawd game state', error);
+    isGameOpen = false;
+    setStatus('无法读取游戏状态');
+  } finally {
+    pendingAction = null;
+    renderGameControls();
+  }
+};
+
 const handleStartGame = async () => {
-  startButton.disabled = true;
+  if (pendingAction !== null || isGameOpen) {
+    return;
+  }
+
+  pendingAction = 'starting';
+  renderGameControls();
   setStatus('正在打开...');
 
   try {
     await openGameInActiveTab();
+    isGameOpen = true;
     await sendBackdropBlurToActiveTab(currentBackdropBlurPx);
-    setStatus('已打开');
-    window.setTimeout(() => window.close(), 80);
+    setStatus('游戏已打开');
   } catch (error) {
     console.warn('Failed to open Happy Clawd game', error);
-    startButton.disabled = false;
+    isGameOpen = false;
     setStatus('当前页面无法打开游戏');
+  } finally {
+    pendingAction = null;
+    renderGameControls();
+  }
+};
+
+const handleExitGame = async () => {
+  if (pendingAction !== null || !isGameOpen) {
+    return;
+  }
+
+  pendingAction = 'exiting';
+  renderGameControls();
+  setStatus('正在退出...');
+
+  try {
+    const state = await closeGameInActiveTab();
+    isGameOpen = state.isOpen;
+    setStatus(state.state === 'already-closed' ? '游戏未打开' : '已退出');
+  } catch (error) {
+    console.warn('Failed to close Happy Clawd game', error);
+    setStatus('当前页面无法退出游戏');
+  } finally {
+    pendingAction = null;
+    renderGameControls();
   }
 };
 
@@ -183,4 +257,11 @@ startButton.addEventListener('click', () => {
   void handleStartGame();
 });
 
+exitButton.addEventListener('click', () => {
+  void handleExitGame();
+});
+
 backdropBlurSlider.addEventListener('input', handleBackdropBlurInput);
+
+renderGameControls();
+void syncGameState();
