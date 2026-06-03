@@ -1,0 +1,233 @@
+:root {
+  color-scheme: light;
+  --clawd: #da7756;
+  --platform: #111827;
+  --platform-target: #334155;
+  --focus: rgba(17, 24, 39, 0.32);
+  --danger: #e11d48;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
+  margin: 0;
+  background: transparent;
+}
+
+body {
+  overflow: hidden;
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.app {
+  display: grid;
+  width: 100vw;
+  height: 100vh;
+  place-items: center;
+  background: transparent;
+}
+
+.stage {
+  position: relative;
+  width: min(100vw, 100vh);
+  height: 100vh;
+  --spike-height: 36px;
+  overflow: hidden;
+  background: transparent;
+  user-select: none;
+  touch-action: none;
+}
+
+.spikes {
+  position: absolute;
+  left: 0;
+  z-index: 6;
+  display: block;
+  width: 100%;
+  height: var(--spike-height);
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.spikes--top {
+  top: 0;
+}
+
+.spikes--bottom {
+  bottom: 0;
+}
+
+.spikes--bottom svg {
+  transform: rotate(180deg);
+}
+
+.spikes svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.spikes path {
+  fill: #fff;
+  stroke: var(--platform);
+  stroke-linejoin: miter;
+  stroke-miterlimit: 4;
+  vector-effect: non-scaling-stroke;
+}
+
+.score {
+  position: absolute;
+  top: calc(var(--spike-height) + clamp(4px, 1.4vw, 10px));
+  left: 50%;
+  z-index: 8;
+  color: #111827;
+  font-size: clamp(12px, 3vw, 18px);
+  font-weight: 650;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
+.charge-meter {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  z-index: 7;
+  width: 10px;
+  height: 76px;
+  overflow: hidden;
+  border: 1px solid rgba(17, 24, 39, 0.72);
+  border-radius: 0;
+  background: rgba(17, 24, 39, 0.12);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 90ms ease;
+  will-change: left, bottom, height, opacity;
+}
+
+.stage.is-charging .charge-meter {
+  opacity: 1;
+}
+
+.stage.is-jumping .charge-meter {
+  opacity: 0;
+}
+
+.stage.is-respawning .clawd-layer--body {
+  animation: respawn-flash 360ms step-end both;
+}
+
+.charge-meter__fill {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: var(--charge-color, #0ea5e9);
+  box-shadow: none;
+  transform: translateY(100%);
+  will-change: background, box-shadow, transform;
+}
+
+.charge-meter__fill.is-low {
+  border: 1px solid rgba(17, 24, 39, 0.88);
+  background: transparent;
+  box-shadow: none;
+}
+
+.clawd-layer {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  z-index: 5;
+  width: 150px;
+  height: 98px;
+  pointer-events: none;
+  transform-origin: center bottom;
+  will-change: left, bottom, transform, opacity;
+}
+
+.clawd-layer svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.clawd-layer--smear {
+  z-index: 4;
+  opacity: 0;
+  transform-origin: center top;
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 34%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 0%, #000 34%, transparent 100%);
+}
+
+.clawd-layer--body.is-hit path[fill="#DA7756"] {
+  fill: var(--danger);
+}
+
+.clawd-velocity {
+  width: 100%;
+  height: 100%;
+  transform-origin: center bottom;
+  will-change: transform;
+}
+
+@keyframes respawn-flash {
+  0%,
+  24%,
+  50%,
+  74% {
+    opacity: 0.14;
+  }
+
+  25%,
+  49%,
+  75%,
+  100% {
+    opacity: 1;
+  }
+}
+
+.platform {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 3;
+  width: 300px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  opacity: 1;
+  touch-action: none;
+  transform: translate3d(0, 0, 0);
+  will-change: transform, opacity;
+}
+
+.platform::before {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: block;
+  width: 100%;
+  height: var(--platform-thickness, 4px);
+  background: var(--platform);
+  content: "";
+  pointer-events: none;
+}
+
+.platform.is-target::before {
+  background: var(--platform-target);
+}
+
+.platform.is-current::before {
+  box-shadow: 0 3px 0 rgba(17, 24, 39, 0.12);
+}
