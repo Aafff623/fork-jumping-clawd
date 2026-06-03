@@ -130,6 +130,26 @@ h1 {
   font: 650 14px/1 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
+.game-button--mode {
+  border-color: #cbd5e1;
+  background: #ffffff;
+  color: #111827;
+}
+
+.game-button--mode:hover {
+  background: #f8fafc;
+}
+
+.game-button--mode.is-active {
+  border-color: #111827;
+  background: #111827;
+  color: #ffffff;
+}
+
+.game-button--exit {
+  grid-column: 1 / -1;
+}
+
 .game-button--primary {
   background: #111827;
   color: #ffffff;
@@ -154,7 +174,19 @@ h1 {
   opacity: 0.64;
 }
 
+.game-button--mode.is-active:disabled {
+  opacity: 1;
+}
+
 .game-button--primary:disabled:hover {
+  background: #111827;
+}
+
+.game-button--mode:disabled:hover {
+  background: #ffffff;
+}
+
+.game-button--mode.is-active:disabled:hover {
   background: #111827;
 }
 

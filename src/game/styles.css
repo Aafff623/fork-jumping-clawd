@@ -243,3 +243,215 @@ body {
 .platform.is-current::before {
   box-shadow: 0 3px 0 var(--platform-shadow);
 }
+
+.game-over {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  padding: 18px;
+  place-items: center;
+  background: rgba(248, 250, 252, 0.22);
+  color: #111827;
+  pointer-events: auto;
+  touch-action: auto;
+  user-select: text;
+}
+
+.game-over[hidden] {
+  display: none;
+}
+
+.game-over__panel {
+  display: grid;
+  width: min(300px, 100%);
+  gap: 12px;
+  padding: 18px;
+  border: 1px solid rgba(15, 23, 42, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 16px 44px rgba(15, 23, 42, 0.2);
+}
+
+.game-over__leaderboard {
+  position: relative;
+}
+
+.game-over__leaderboard h2 {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+.game-over__rank-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.game-over__rank-row {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) minmax(38px, auto);
+  min-height: 28px;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: #f8fafc;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.game-over__rank-row.is-player {
+  border-color: rgba(249, 115, 22, 0.42);
+  background: rgba(255, 247, 237, 0.95);
+}
+
+.game-over__rank-number {
+  color: #f97316;
+  font-variant-numeric: tabular-nums;
+}
+
+.game-over__rank-name {
+  min-width: 0;
+  overflow: hidden;
+  color: #111827;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.game-over__rank-score {
+  color: #475569;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.game-over__score {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 10px 0;
+  border-top: 1px solid #e2e8f0;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.game-over__score span,
+.game-over__field span {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.2;
+}
+
+.game-over__score strong {
+  color: #111827;
+  font-size: 30px;
+  font-weight: 780;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.game-over__submit {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 40px;
+  align-items: end;
+  gap: 8px;
+}
+
+.game-over__field {
+  display: grid;
+  gap: 7px;
+}
+
+.game-over__field input {
+  width: 100%;
+  height: 38px;
+  padding: 0 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #111827;
+  font: 650 14px/1.2 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  outline: none;
+}
+
+.game-over__field input:focus {
+  border-color: #111827;
+  box-shadow: 0 0 0 3px rgba(17, 24, 39, 0.12);
+}
+
+.game-over__send {
+  display: grid;
+  width: 40px;
+  height: 38px;
+  place-items: center;
+  border: 1px solid #111827;
+  border-radius: 8px;
+  background: #111827;
+  color: #ffffff;
+  cursor: pointer;
+  font: 800 16px/1 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.game-over__send:hover {
+  background: #1f2937;
+}
+
+.game-over__send:disabled {
+  border-color: #cbd5e1;
+  background: #e2e8f0;
+  color: #94a3b8;
+  cursor: default;
+}
+
+.game-over__send.is-sent {
+  border-color: #f97316;
+  background: #f97316;
+}
+
+.game-over__actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+}
+
+.game-over__button {
+  min-width: 0;
+  min-height: 40px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  font: 700 14px/1 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.game-over__button--primary {
+  background: #111827;
+  color: #ffffff;
+}
+
+.game-over__button--primary:hover {
+  background: #1f2937;
+}
+
+.game-over__button--secondary {
+  border-color: #cbd5e1;
+  background: #ffffff;
+  color: #111827;
+}
+
+.game-over__button--secondary:hover {
+  background: #f8fafc;
+}
+
+:root[data-page-surface="dark"] .game-over {
+  background: rgba(2, 6, 23, 0.24);
+}

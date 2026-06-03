@@ -69,6 +69,49 @@
         <div class="platform" data-platform="c" aria-hidden="true"></div>
         <div class="platform" data-platform="d" aria-hidden="true"></div>
         <div class="platform" data-platform="e" aria-hidden="true"></div>
+
+        <div
+          class="game-over"
+          data-game-over
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="game-over-title"
+          hidden
+        >
+          <div class="game-over__panel">
+            <section class="game-over__leaderboard" aria-labelledby="game-over-title">
+              <h2 id="game-over-title">排行榜</h2>
+              <ol class="game-over__rank-list" data-rank-list></ol>
+            </section>
+            <div class="game-over__score">
+              <span>得分</span>
+              <strong data-final-score>0</strong>
+            </div>
+            <form class="game-over__submit" data-score-form>
+              <label class="game-over__field">
+                <span>名字</span>
+                <input
+                  data-player-name
+                  type="text"
+                  maxlength="24"
+                  autocomplete="off"
+                  inputmode="text"
+                />
+              </label>
+              <button class="game-over__send" data-submit-score type="submit" aria-label="上榜">
+                <span aria-hidden="true">-&gt;</span>
+              </button>
+            </form>
+            <div class="game-over__actions">
+              <button class="game-over__button game-over__button--primary" data-retry-game type="button">
+                再来一次
+              </button>
+              <button class="game-over__button game-over__button--secondary" data-exit-game type="button">
+                退出
+              </button>
+            </div>
+          </div>
+        </div>
       </section>
     </main>
 

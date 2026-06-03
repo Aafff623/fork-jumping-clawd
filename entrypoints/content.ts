@@ -7,16 +7,29 @@ import {
 } from '../src/extension/backdrop-blur';
 import {
   CLOSE_GAME_MESSAGE,
+  DEFAULT_GAME_MODE,
+  type GameMode,
   GET_GAME_STATE_MESSAGE,
   OPEN_GAME_MESSAGE,
+  type OpenGameMessage,
   SET_BACKDROP_BLUR_MESSAGE,
   type SetBackdropBlurMessage,
+  isGameMode,
 } from '../src/extension/messages';
 
 const GAME_PAGE = '/game.html';
 const OVERLAY_ID = 'happy-clawd-game-overlay';
 const PAGE_SURFACE_SEARCH_PARAM = 'surface';
+const GAME_MODE_SEARCH_PARAM = 'mode';
 const CONTRAST_SWITCH_LUMINANCE = 0.179;
+const BLOCKED_PAGE_INPUT_EVENTS = [
+  'beforeinput',
+  'input',
+  'compositionstart',
+  'compositionupdate',
+  'compositionend',
+  'paste',
+] as const;
 
 type PageSurfaceTheme = 'light' | 'dark';
 
@@ -37,11 +50,12 @@ let overlayFrame: HTMLIFrameElement | null = null;
 let savedScrollStyles: SavedScrollStyles | null = null;
 let backdropBlurPx = DEFAULT_BACKDROP_BLUR_PX;
 let backdropBlurLoad: Promise<number> | null = null;
+let currentGameMode: GameMode = DEFAULT_GAME_MODE;
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
 
-const isOpenGameMessage = (message: unknown) =>
+const isOpenGameMessage = (message: unknown): message is OpenGameMessage =>
   isObject(message) && message.type === OPEN_GAME_MESSAGE;
 
 const isCloseGameControlMessage = (message: unknown) =>
@@ -380,9 +394,16 @@ const getPageSurfaceTheme = (): PageSurfaceTheme => {
   return averageLuminance > CONTRAST_SWITCH_LUMINANCE ? 'light' : 'dark';
 };
 
-const getGamePageUrl = (surfaceTheme: PageSurfaceTheme) => {
+const getGameModeFromMessage = (message: OpenGameMessage): GameMode =>
+  isGameMode(message.mode) ? message.mode : DEFAULT_GAME_MODE;
+
+const getGamePageUrl = (
+  surfaceTheme: PageSurfaceTheme,
+  gameMode: GameMode,
+) => {
   const url = new URL(browser.runtime.getURL(GAME_PAGE));
   url.searchParams.set(PAGE_SURFACE_SEARCH_PARAM, surfaceTheme);
+  url.searchParams.set(GAME_MODE_SEARCH_PARAM, gameMode);
 
   return url.toString();
 };
@@ -446,6 +467,14 @@ const focusGameFrame = () => {
   });
 };
 
+const blurActivePageElement = () => {
+  const activeElement = document.activeElement;
+
+  if (activeElement instanceof HTMLElement) {
+    activeElement.blur();
+  }
+};
+
 const isOverlayOpen = () => Boolean(overlayHost?.isConnected);
 
 const closeGameOverlay = () => {
@@ -453,12 +482,13 @@ const closeGameOverlay = () => {
   overlayHost?.remove();
   overlayHost = null;
   overlayFrame = null;
+  currentGameMode = DEFAULT_GAME_MODE;
   restorePageScroll();
 
   return wasOpen;
 };
 
-const createOverlayHost = () => {
+const createOverlayHost = (gameMode: GameMode) => {
   const host = document.createElement('div');
   host.id = OVERLAY_ID;
   host.style.setProperty('--happy-clawd-backdrop-blur', `${backdropBlurPx}px`);
@@ -519,24 +549,32 @@ const createOverlayHost = () => {
     throw new Error('Failed to create Happy Clawd overlay');
   }
 
-  iframe.src = getGamePageUrl(getPageSurfaceTheme());
+  iframe.src = getGamePageUrl(getPageSurfaceTheme(), gameMode);
   iframe.addEventListener('load', focusGameFrame);
 
   return { host, iframe };
 };
 
-const openGameOverlay = async () => {
+const openGameOverlay = async (gameMode: GameMode = DEFAULT_GAME_MODE) => {
   await loadBackdropBlur();
 
   if (overlayHost?.isConnected) {
+    if (currentGameMode !== gameMode && overlayFrame) {
+      currentGameMode = gameMode;
+      overlayFrame.src = getGamePageUrl(getPageSurfaceTheme(), gameMode);
+      return 'switched';
+    }
+
     focusGameFrame();
     return 'already-open';
   }
 
-  const { host, iframe } = createOverlayHost();
+  const { host, iframe } = createOverlayHost(gameMode);
   overlayHost = host;
   overlayFrame = iframe;
+  currentGameMode = gameMode;
   lockPageScroll();
+  blurActivePageElement();
   document.documentElement.append(host);
   focusGameFrame();
 
@@ -554,6 +592,11 @@ export default defineContentScript({
       if (isOpenGameShortcut(event)) {
         event.preventDefault();
         event.stopImmediatePropagation();
+        if (overlayHost?.isConnected) {
+          focusGameFrame();
+          return;
+        }
+
         void openGameOverlay();
         return;
       }
@@ -562,7 +605,24 @@ export default defineContentScript({
         event.preventDefault();
         event.stopImmediatePropagation();
         closeGameOverlay();
+        return;
       }
+
+      if (overlayHost?.isConnected) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        focusGameFrame();
+      }
+    };
+
+    const handlePageInputEvent = (event: Event) => {
+      if (!overlayHost?.isConnected) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      focusGameFrame();
     };
 
     const handleWindowMessage = (event: MessageEvent) => {
@@ -577,10 +637,11 @@ export default defineContentScript({
 
     const handleRuntimeMessage = (message: unknown) => {
       if (isOpenGameMessage(message)) {
-        return openGameOverlay().then((state) => ({
+        return openGameOverlay(getGameModeFromMessage(message)).then((state) => ({
           ok: true,
           state,
           isOpen: true,
+          mode: currentGameMode,
         }));
       }
 
@@ -591,6 +652,7 @@ export default defineContentScript({
           ok: true,
           state: wasOpen ? 'closed' : 'already-closed',
           isOpen: false,
+          mode: null,
         });
       }
 
@@ -599,6 +661,7 @@ export default defineContentScript({
           ok: true,
           state: isOverlayOpen() ? 'open' : 'closed',
           isOpen: isOverlayOpen(),
+          mode: isOverlayOpen() ? currentGameMode : null,
         });
       }
 
@@ -627,6 +690,11 @@ export default defineContentScript({
     };
 
     window.addEventListener('keydown', handleKeyDown, true);
+    window.addEventListener('keypress', handlePageInputEvent, true);
+    window.addEventListener('keyup', handlePageInputEvent, true);
+    BLOCKED_PAGE_INPUT_EVENTS.forEach((eventName) => {
+      window.addEventListener(eventName, handlePageInputEvent, true);
+    });
     window.addEventListener('message', handleWindowMessage);
     browser.runtime.onMessage.addListener(handleRuntimeMessage);
     browser.storage.onChanged.addListener(handleStorageChange);
@@ -634,6 +702,11 @@ export default defineContentScript({
     ctx.onInvalidated(() => {
       closeGameOverlay();
       window.removeEventListener('keydown', handleKeyDown, true);
+      window.removeEventListener('keypress', handlePageInputEvent, true);
+      window.removeEventListener('keyup', handlePageInputEvent, true);
+      BLOCKED_PAGE_INPUT_EVENTS.forEach((eventName) => {
+        window.removeEventListener(eventName, handlePageInputEvent, true);
+      });
       window.removeEventListener('message', handleWindowMessage);
       browser.runtime.onMessage.removeListener(handleRuntimeMessage);
       browser.storage.onChanged.removeListener(handleStorageChange);

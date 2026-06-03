@@ -27,6 +27,14 @@ import {
   CLAWD_JUMP_TIMING,
   CLAWD_SCENE_SCALE,
   CLAWD_TOP_PADDING_RATIO,
+  COMPETITIVE_MODE_CHARGE_COLOR,
+  COMPETITIVE_MODE_DRIFT_ACCELERATION_RATIO,
+  COMPETITIVE_MODE_DRIFT_INITIAL_SPEED_RATIO,
+  COMPETITIVE_MODE_DRIFT_MAX_SPEED_RATIO,
+  COMPETITIVE_TARGET_HORIZONTAL_DISTANCE_MAX_RATIO,
+  COMPETITIVE_TARGET_HORIZONTAL_DISTANCE_MIN_RATIO,
+  COMPETITIVE_TARGET_VERTICAL_GAP_MAX_RATIO,
+  COMPETITIVE_TARGET_VERTICAL_GAP_MIN_RATIO,
   CYCLE_DURATION_FRAMES,
   CURRENT_SURFACE_RATIO,
   JUMP_HANGTIME_LIFT_RATIO,
@@ -76,6 +84,9 @@ import {
 } from "./math.js";
 
 const PAGE_SURFACE_THEMES = new Set(["light", "dark"]);
+const GAME_MODES = new Set(["casual", "competitive"]);
+const DEFAULT_GAME_MODE = "casual";
+
 const getInitialPageSurfaceTheme = () => {
   const surfaceTheme = new URLSearchParams(window.location.search).get(
     "surface",
@@ -88,7 +99,16 @@ const getInitialPageSurfaceTheme = () => {
   return "light";
 };
 
+const getInitialGameMode = () => {
+  const mode = new URLSearchParams(window.location.search).get("mode");
+
+  return GAME_MODES.has(mode) ? mode : DEFAULT_GAME_MODE;
+};
+
 document.documentElement.dataset.pageSurface = getInitialPageSurfaceTheme();
+const gameMode = getInitialGameMode();
+document.documentElement.dataset.gameMode = gameMode;
+const isCompetitiveMode = () => gameMode === "competitive";
 
 const {
   stage,
@@ -108,6 +128,14 @@ const {
   bottomSpikes,
   bottomSpikesSvg,
   bottomSpikesPath,
+  gameOverModal,
+  rankList,
+  finalScoreValue,
+  scoreForm,
+  playerNameInput,
+  submitScoreButton,
+  retryGameButton,
+  exitGameButton,
   platforms,
 } = elements;
 
@@ -119,6 +147,10 @@ let initialized = false;
 let frameRequest = 0;
 // World surface height that maps to the current ledge position on screen.
 let cameraSurfaceY = 0;
+const competitiveModeDrift = {
+  startedAt: 0,
+  lastAppliedAt: 0,
+};
 
 const clawdSize = {
   height: 150,
@@ -164,6 +196,71 @@ const game = {
   respawnStartedAt: 0,
 };
 
+const FAKE_RANK_ENTRIES = [
+  { id: "fake-1", name: "Nico", score: 18 },
+  { id: "fake-2", name: "Ada", score: 12 },
+  { id: "fake-3", name: "Kai", score: 7 },
+];
+
+let submittedRankEntry = null;
+
+const getPlayerName = () => playerNameInput.value.trim();
+
+const getRankEntries = () =>
+  [...FAKE_RANK_ENTRIES, ...(submittedRankEntry ? [submittedRankEntry] : [])]
+    .sort((a, b) => b.score - a.score)
+    .map((entry, index) => ({
+      ...entry,
+      rank: index + 1,
+    }));
+
+const renderRankList = () => {
+  rankList.textContent = "";
+
+  getRankEntries().forEach((entry) => {
+    const row = document.createElement("li");
+    row.className = "game-over__rank-row";
+    row.classList.toggle("is-player", entry.id === "player");
+
+    const rank = document.createElement("span");
+    rank.className = "game-over__rank-number";
+    rank.textContent = String(entry.rank);
+
+    const name = document.createElement("span");
+    name.className = "game-over__rank-name";
+    name.textContent = entry.name;
+
+    const score = document.createElement("span");
+    score.className = "game-over__rank-score";
+    score.textContent = String(entry.score);
+
+    row.append(rank, name, score);
+    rankList.append(row);
+  });
+};
+
+const updateScoreSubmitState = () => {
+  submitScoreButton.disabled = getPlayerName().length === 0;
+};
+
+const submitPlayerScore = () => {
+  const name = getPlayerName();
+
+  if (!name) {
+    updateScoreSubmitState();
+    playerNameInput.focus({ preventScroll: true });
+    return;
+  }
+
+  submittedRankEntry = {
+    id: "player",
+    name,
+    score: game.score,
+  };
+  renderRankList();
+  submitScoreButton.classList.add("is-sent");
+};
+
 const getStageRect = () => stage.getBoundingClientRect();
 const getVisibleClawdHeight = () => clawdSize.height - clawdSize.bottomPadding;
 const getClawdBodyCollisionHeight = () =>
@@ -187,6 +284,83 @@ const getJumpLift = (power) =>
     stageSize.height * CHARGE_MAX_LIFT_RATIO,
     clamp01(power),
   );
+
+const resetCompetitiveModeDrift = (now) => {
+  competitiveModeDrift.startedAt = now;
+  competitiveModeDrift.lastAppliedAt = now;
+};
+
+const getCompetitiveModeDriftSpeedRatio = (elapsedSeconds) =>
+  clamp(
+    COMPETITIVE_MODE_DRIFT_INITIAL_SPEED_RATIO +
+      COMPETITIVE_MODE_DRIFT_ACCELERATION_RATIO * elapsedSeconds,
+    COMPETITIVE_MODE_DRIFT_INITIAL_SPEED_RATIO,
+    COMPETITIVE_MODE_DRIFT_MAX_SPEED_RATIO,
+  );
+
+const canApplyCompetitiveModeDrift = () =>
+  game.phase === "ready" ||
+  game.phase === "charging" ||
+  game.phase === "jumping";
+
+const applyCompetitiveModeDrift = (now) => {
+  if (!isCompetitiveMode() || !stageSize.height) {
+    return;
+  }
+
+  if (!competitiveModeDrift.startedAt || !competitiveModeDrift.lastAppliedAt) {
+    resetCompetitiveModeDrift(now);
+    return;
+  }
+
+  if (!canApplyCompetitiveModeDrift()) {
+    competitiveModeDrift.lastAppliedAt = now;
+    return;
+  }
+
+  const deltaSeconds = Math.max(
+    0,
+    (now - competitiveModeDrift.lastAppliedAt) / 1000,
+  );
+
+  if (deltaSeconds <= 0) {
+    return;
+  }
+
+  const previousElapsedSeconds = Math.max(
+    0,
+    (competitiveModeDrift.lastAppliedAt - competitiveModeDrift.startedAt) /
+      1000,
+  );
+  const currentElapsedSeconds = Math.max(
+    0,
+    (now - competitiveModeDrift.startedAt) / 1000,
+  );
+  const averageSpeedRatio =
+    (getCompetitiveModeDriftSpeedRatio(previousElapsedSeconds) +
+      getCompetitiveModeDriftSpeedRatio(currentElapsedSeconds)) /
+    2;
+
+  cameraSurfaceY += stageSize.height * averageSpeedRatio * deltaSeconds;
+  competitiveModeDrift.lastAppliedAt = now;
+  syncPlatforms();
+};
+
+const isCompetitiveModeFallDeathPhase = () =>
+  game.phase === "ready" || game.phase === "charging";
+
+const maybeTriggerCompetitiveModeFallDeath = (now) => {
+  if (!isCompetitiveMode() || !isCompetitiveModeFallDeathPhase()) {
+    return false;
+  }
+
+  if (getPlatformAnchor(game.current).surfaceY > getBottomSpikeHitSurfaceY()) {
+    return false;
+  }
+
+  enterCompetitiveModeGameOver({ now });
+  return true;
+};
 
 const getChargePowerForLift = (lift) => {
   const minLift = stageSize.height * CHARGE_MIN_LIFT_RATIO;
@@ -301,6 +475,26 @@ const setRandomPlatformWidth = (id) => {
     getRandomBetween(getMinPlatformWidth(), getMaxPlatformWidth()),
   );
 };
+
+const getTargetHorizontalDistanceMinRatio = () =>
+  isCompetitiveMode()
+    ? COMPETITIVE_TARGET_HORIZONTAL_DISTANCE_MIN_RATIO
+    : TARGET_HORIZONTAL_DISTANCE_MIN_RATIO;
+
+const getTargetHorizontalDistanceMaxRatio = () =>
+  isCompetitiveMode()
+    ? COMPETITIVE_TARGET_HORIZONTAL_DISTANCE_MAX_RATIO
+    : TARGET_HORIZONTAL_DISTANCE_MAX_RATIO;
+
+const getTargetVerticalGapMinRatio = () =>
+  isCompetitiveMode()
+    ? COMPETITIVE_TARGET_VERTICAL_GAP_MIN_RATIO
+    : TARGET_VERTICAL_GAP_MIN_RATIO;
+
+const getTargetVerticalGapMaxRatio = () =>
+  isCompetitiveMode()
+    ? COMPETITIVE_TARGET_VERTICAL_GAP_MAX_RATIO
+    : TARGET_VERTICAL_GAP_MAX_RATIO;
 
 const syncPlatformSizes = () => {
   platformThickness = Math.max(
@@ -581,8 +775,8 @@ const generateNextPlatform = ({ id, fromId, preferredDirection = null }) => {
   const targetWidth = getPlatformWidth(id);
   const minCenterX = targetWidth / 2;
   const maxCenterX = stageSize.width - targetWidth / 2;
-  const minDistance = stageSize.width * TARGET_HORIZONTAL_DISTANCE_MIN_RATIO;
-  const maxDistance = stageSize.width * TARGET_HORIZONTAL_DISTANCE_MAX_RATIO;
+  const minDistance = stageSize.width * getTargetHorizontalDistanceMinRatio();
+  const maxDistance = stageSize.width * getTargetHorizontalDistanceMaxRatio();
   const directions = getTargetDirections({
     fromX: from.x,
     targetWidth,
@@ -604,10 +798,10 @@ const generateNextPlatform = ({ id, fromId, preferredDirection = null }) => {
   const safeMaxDistance = Math.max(1, Math.min(maxDistance, availableDistance));
   const safeMinDistance = Math.min(minDistance, safeMaxDistance * 0.72);
   const distance = getRandomBetween(safeMinDistance, safeMaxDistance);
-  const minVerticalGap = stageSize.height * TARGET_VERTICAL_GAP_MIN_RATIO;
+  const minVerticalGap = stageSize.height * getTargetVerticalGapMinRatio();
   const maxVerticalGap = Math.max(
     minVerticalGap + 1,
-    stageSize.height * TARGET_VERTICAL_GAP_MAX_RATIO,
+    stageSize.height * getTargetVerticalGapMaxRatio(),
   );
   const surfaceY =
     from.surfaceY + getRandomBetween(minVerticalGap, maxVerticalGap);
@@ -819,10 +1013,11 @@ const createJump = ({ now, chargePower }) => {
   return {
     startedAt: now,
     startFrame: JUMP_RELEASE_START_FRAME,
+    startCameraSurfaceY: cameraSurfaceY,
     chargePower,
     outcome,
     cameraMove:
-      outcome === "success"
+      outcome === "success" && !isCompetitiveMode()
         ? {
             startFrame: JUMP_CAMERA_START_FRAME,
             durationFrames: JUMP_CAMERA_DURATION_FRAMES,
@@ -852,13 +1047,59 @@ const syncHud = () => {
   chargeFill.style.transform = `translateY(${(1 - game.chargePower) * 100}%)`;
   chargeFill.style.setProperty(
     "--charge-color",
-    getChargeColor(chargeFeedback),
+    isCompetitiveMode()
+      ? COMPETITIVE_MODE_CHARGE_COLOR
+      : getChargeColor(chargeFeedback),
   );
-  chargeFill.classList.toggle("is-low", chargeFeedback === "low");
+  chargeFill.classList.toggle(
+    "is-low",
+    !isCompetitiveMode() && chargeFeedback === "low",
+  );
   stage.classList.toggle("is-dead", game.phase === "dead");
   stage.classList.toggle("is-charging", game.phase === "charging");
   stage.classList.toggle("is-jumping", game.phase === "jumping");
   stage.classList.toggle("is-respawning", game.phase === "respawning");
+  stage.classList.toggle("is-game-over", game.phase === "game-over");
+};
+
+const hideCompetitiveGameOver = () => {
+  if (
+    document.activeElement instanceof HTMLElement &&
+    gameOverModal.contains(document.activeElement)
+  ) {
+    document.activeElement.blur();
+  }
+
+  gameOverModal.hidden = true;
+};
+
+const showCompetitiveGameOver = () => {
+  finalScoreValue.textContent = String(game.score);
+  submitScoreButton.classList.remove("is-sent");
+  renderRankList();
+  updateScoreSubmitState();
+  gameOverModal.hidden = false;
+
+  requestAnimationFrame(() => {
+    if (!gameOverModal.hidden) {
+      playerNameInput.focus({ preventScroll: true });
+    }
+  });
+};
+
+const enterCompetitiveModeGameOver = ({ now }) => {
+  game.phase = "game-over";
+  game.chargePower = 0;
+  game.respawnStartedAt = 0;
+  resetCompetitiveModeDrift(now);
+  syncHud();
+
+  if (!game.jump) {
+    renderReadyPose();
+    setClawdHitState(true);
+  }
+
+  showCompetitiveGameOver();
 };
 
 const renderStaticPose = ({ anchor, scaleX = 1, scaleY = 1, armSwing = 0 }) => {
@@ -965,7 +1206,12 @@ const renderJumpPose = (
   });
 };
 
-const renderTopDeathPose = ({ collisionFrame, deathFrame, jumpStateProps }) => {
+const renderTopDeathPose = ({
+  collisionFrame,
+  deathFrame,
+  jumpStateProps,
+  cameraSurfaceOffset = 0,
+}) => {
   const collisionMotion = getClawdJumpState({
     ...jumpStateProps,
     frame: collisionFrame,
@@ -987,7 +1233,8 @@ const renderTopDeathPose = ({ collisionFrame, deathFrame, jumpStateProps }) => {
   const tiltDegrees = TOP_DEATH_FALL_TILT_DEGREES * jumpDirection * fallProgress;
   const scaleX = lerp(collisionMotion.scaleX, 0.94, fallProgress);
   const scaleY = lerp(collisionMotion.scaleY, 1.08, fallProgress);
-  const surfaceY = collisionMotion.surfaceY - fallDistance;
+  const surfaceY =
+    collisionMotion.surfaceY - cameraSurfaceOffset - fallDistance;
   const clawdBottom = surfaceY - clawdSize.bottomPadding * scaleY;
 
   setClawdHitState(true);
@@ -1007,6 +1254,7 @@ const renderTopDeathPose = ({ collisionFrame, deathFrame, jumpStateProps }) => {
 const renderBottomDeathPose = ({
   collisionFrame,
   jumpStateProps,
+  cameraSurfaceOffset = 0,
 }) => {
   const collisionMotion = getClawdJumpState({
     ...jumpStateProps,
@@ -1021,6 +1269,7 @@ const renderBottomDeathPose = ({
   });
   const clawdBottom =
     collisionMotion.surfaceY -
+    cameraSurfaceOffset -
     clawdSize.bottomPadding * collisionMotion.scaleY;
   const tiltDegrees = getBottomDeathTiltDegrees({
     frame: collisionFrame,
@@ -1039,9 +1288,11 @@ const renderBottomDeathPose = ({
 
 const syncJumpCamera = ({ jump, frame }) => {
   const cameraMove = jump.cameraMove;
+  const startCameraSurfaceY =
+    jump.startCameraSurfaceY ?? cameraMove?.startCameraSurfaceY ?? cameraSurfaceY;
 
   if (!cameraMove) {
-    return 0;
+    return cameraSurfaceY - startCameraSurfaceY;
   }
 
   const progress = getJumpCameraProgress(
@@ -1055,7 +1306,43 @@ const syncJumpCamera = ({ jump, frame }) => {
   );
   syncPlatforms();
 
-  return cameraSurfaceY - cameraMove.startCameraSurfaceY;
+  return cameraSurfaceY - startCameraSurfaceY;
+};
+
+const getJumpScreenBodyBottomY = ({ jump, frame, cameraSurfaceOffset }) => {
+  const motion = getClawdJumpState({
+    ...jump.jumpStateProps,
+    frame,
+    fps: BASELINE_ANIMATION_FPS,
+  });
+
+  return motion.surfaceY - cameraSurfaceOffset;
+};
+
+const maybeTriggerCompetitiveJumpFallDeath = ({
+  now,
+  jump,
+  frame,
+  cameraSurfaceOffset,
+}) => {
+  if (!isCompetitiveMode() || jump.outcome !== "success") {
+    return false;
+  }
+
+  if (
+    getJumpScreenBodyBottomY({ jump, frame, cameraSurfaceOffset }) >
+    getBottomSpikeHitSurfaceY()
+  ) {
+    return false;
+  }
+
+  renderJumpPose(frame, jump.jumpStateProps, {
+    outcome: "low",
+    collisionFrame: frame,
+    cameraSurfaceOffset,
+  });
+  enterCompetitiveModeGameOver({ now });
+  return true;
 };
 
 const finishJump = (now) => {
@@ -1065,12 +1352,11 @@ const finishJump = (now) => {
 
   if (game.jump.outcome === "success") {
     const recycledPlatform = game.current;
-    const landedWorldSurfaceY =
-      game.jump.cameraMove?.endCameraSurfaceY ??
-      getPlatformWorldAnchor(game.target).surfaceY;
 
     game.score += 1;
-    cameraSurfaceY = landedWorldSurfaceY;
+    if (!isCompetitiveMode()) {
+      cameraSurfaceY = getPlatformWorldAnchor(game.target).surfaceY;
+    }
     game.platformQueue = [...game.platformQueue.slice(1), recycledPlatform];
     syncQueuedPlatforms();
     platformGenerated[recycledPlatform] = false;
@@ -1091,6 +1377,11 @@ const finishJump = (now) => {
   }
 
   if (game.jump.outcome === "top" || game.jump.outcome === "low") {
+    if (isCompetitiveMode()) {
+      enterCompetitiveModeGameOver({ now });
+      return;
+    }
+
     resetGame({ preservePlatforms: true, respawn: true, now });
     return;
   }
@@ -1180,6 +1471,16 @@ const renderFrame = (now) => {
     return;
   }
 
+  applyCompetitiveModeDrift(now);
+
+  if (maybeTriggerCompetitiveModeFallDeath(now)) {
+    return;
+  }
+
+  if (game.phase === "game-over") {
+    return;
+  }
+
   if (game.phase === "respawning") {
     renderRespawnPose(now);
     return;
@@ -1194,6 +1495,11 @@ const renderFrame = (now) => {
     const elapsedFrame =
       game.jump.startFrame +
       ((now - game.jump.startedAt) / 1000) * BASELINE_ANIMATION_FPS;
+    const frame = Math.min(elapsedFrame, CYCLE_DURATION_FRAMES);
+    const cameraSurfaceOffset = syncJumpCamera({
+      jump: game.jump,
+      frame: elapsedFrame,
+    });
 
     if (
       game.jump.outcome === "top" &&
@@ -1204,6 +1510,7 @@ const renderFrame = (now) => {
         collisionFrame: game.jump.freezeFrame,
         deathFrame: elapsedFrame - game.jump.freezeFrame,
         jumpStateProps: game.jump.jumpStateProps,
+        cameraSurfaceOffset,
       });
 
       if (elapsedFrame >= game.jump.resolveFrame) {
@@ -1220,6 +1527,7 @@ const renderFrame = (now) => {
       renderBottomDeathPose({
         collisionFrame: game.jump.freezeFrame,
         jumpStateProps: game.jump.jumpStateProps,
+        cameraSurfaceOffset,
       });
 
       if (elapsedFrame >= game.jump.resolveFrame) {
@@ -1228,11 +1536,16 @@ const renderFrame = (now) => {
       return;
     }
 
-    const frame = Math.min(elapsedFrame, CYCLE_DURATION_FRAMES);
-    const cameraSurfaceOffset = syncJumpCamera({
-      jump: game.jump,
-      frame: elapsedFrame,
-    });
+    if (
+      maybeTriggerCompetitiveJumpFallDeath({
+        now,
+        jump: game.jump,
+        frame,
+        cameraSurfaceOffset,
+      })
+    ) {
+      return;
+    }
 
     renderJumpPose(frame, game.jump.jumpStateProps, {
       outcome: game.jump.outcome,
@@ -1251,7 +1564,14 @@ const renderFrame = (now) => {
       game.jump.freezeFrame !== null
         ? game.jump.freezeFrame
         : CYCLE_DURATION_FRAMES;
-    renderJumpPose(frame, game.jump.jumpStateProps);
+    const cameraSurfaceOffset =
+      game.jump.startCameraSurfaceY !== undefined
+        ? cameraSurfaceY - game.jump.startCameraSurfaceY
+        : 0;
+
+    renderJumpPose(frame, game.jump.jumpStateProps, {
+      cameraSurfaceOffset,
+    });
     return;
   }
 
@@ -1268,6 +1588,7 @@ const resetGame = ({
   respawn = false,
   now = performance.now(),
 } = {}) => {
+  hideCompetitiveGameOver();
   game.phase = respawn ? "respawning" : "ready";
   if (preservePlatforms) {
     syncQueueToLowestVisiblePlatform();
@@ -1280,6 +1601,7 @@ const resetGame = ({
   game.chargePower = 0;
   game.jump = null;
   game.respawnStartedAt = respawn ? now : 0;
+  resetCompetitiveModeDrift(now);
   if (preservePlatforms) {
     syncPlatforms();
   } else {
@@ -1334,6 +1656,11 @@ const requestOverlayClose = () => {
 
 const isSpaceEvent = (event) => event.code === "Space" || event.key === " ";
 
+const isGameOverControlEvent = (event) =>
+  game.phase === "game-over" &&
+  event.target instanceof Node &&
+  gameOverModal.contains(event.target);
+
 const beginCharge = (now) => {
   if (!initialized || (game.phase !== "ready" && game.phase !== "dead")) {
     return;
@@ -1372,6 +1699,10 @@ window.addEventListener("keydown", (event) => {
     return;
   }
 
+  if (isGameOverControlEvent(event)) {
+    return;
+  }
+
   if (!isSpaceEvent(event) || event.repeat) {
     return;
   }
@@ -1381,6 +1712,10 @@ window.addEventListener("keydown", (event) => {
 });
 
 window.addEventListener("keyup", (event) => {
+  if (isGameOverControlEvent(event)) {
+    return;
+  }
+
   if (!isSpaceEvent(event)) {
     return;
   }
@@ -1397,6 +1732,24 @@ window.addEventListener("blur", () => {
   game.phase = "ready";
   game.chargePower = 0;
   syncHud();
+});
+
+scoreForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  submitPlayerScore();
+});
+
+playerNameInput.addEventListener("input", () => {
+  submitScoreButton.classList.remove("is-sent");
+  updateScoreSubmitState();
+});
+
+retryGameButton.addEventListener("click", () => {
+  resetGame({ now: performance.now() });
+});
+
+exitGameButton.addEventListener("click", () => {
+  requestOverlayClose();
 });
 
 const resizeObserver = new ResizeObserver(updateStageSize);

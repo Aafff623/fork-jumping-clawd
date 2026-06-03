@@ -13,7 +13,12 @@ import {
   getGameStateInActiveTab,
   openGameInActiveTab,
 } from '../../src/extension/open-game';
-import { SET_BACKDROP_BLUR_MESSAGE } from '../../src/extension/messages';
+import {
+  DEFAULT_GAME_MODE,
+  type GameMode,
+  SET_BACKDROP_BLUR_MESSAGE,
+  isGameMode,
+} from '../../src/extension/messages';
 import './style.css';
 
 const app = document.querySelector<HTMLDivElement>('#app');
@@ -62,10 +67,23 @@ app.innerHTML = `
     </section>
 
     <div class="game-actions" aria-label="游戏控制">
-      <button id="start-game" class="game-button game-button--primary" type="button">
-        开始游戏
+      <button
+        id="start-casual-game"
+        class="game-button game-button--mode"
+        type="button"
+        aria-pressed="false"
+      >
+        摸鱼模式
       </button>
-      <button id="exit-game" class="game-button game-button--secondary" type="button">
+      <button
+        id="start-competitive-game"
+        class="game-button game-button--mode"
+        type="button"
+        aria-pressed="false"
+      >
+        竞技模式
+      </button>
+      <button id="exit-game" class="game-button game-button--secondary game-button--exit" type="button">
         退出游戏
       </button>
     </div>
@@ -94,8 +112,10 @@ app.innerHTML = `
   </main>
 `;
 
-const startButton =
-  document.querySelector<HTMLButtonElement>('#start-game');
+const casualModeButton =
+  document.querySelector<HTMLButtonElement>('#start-casual-game');
+const competitiveModeButton =
+  document.querySelector<HTMLButtonElement>('#start-competitive-game');
 const exitButton = document.querySelector<HTMLButtonElement>('#exit-game');
 const backdropBlurSlider =
   document.querySelector<HTMLInputElement>('#backdrop-blur');
@@ -104,7 +124,8 @@ const backdropBlurValue =
 const statusText = document.querySelector<HTMLParagraphElement>('#status');
 
 if (
-  !startButton ||
+  !casualModeButton ||
+  !competitiveModeButton ||
   !exitButton ||
   !backdropBlurSlider ||
   !backdropBlurValue ||
@@ -115,18 +136,42 @@ if (
 
 type PendingAction = 'loading' | 'starting' | 'exiting' | null;
 
+const GAME_MODE_LABELS: Record<GameMode, string> = {
+  casual: '摸鱼模式',
+  competitive: '竞技模式',
+};
+
+const modeButtons: Record<GameMode, HTMLButtonElement> = {
+  casual: casualModeButton,
+  competitive: competitiveModeButton,
+};
+
+const normalizeGameMode = (value: unknown): GameMode =>
+  isGameMode(value) ? value : DEFAULT_GAME_MODE;
+
 let currentBackdropBlurPx = DEFAULT_BACKDROP_BLUR_PX;
 let hasAdjustedBackdropBlur = false;
 let isGameOpen = false;
+let currentGameMode: GameMode | null = null;
 let pendingAction: PendingAction = 'loading';
 
 const setStatus = (message: string) => {
   statusText.textContent = message;
 };
 
+const getOpenStatus = (mode: GameMode | null) =>
+  `${GAME_MODE_LABELS[mode ?? DEFAULT_GAME_MODE]}中`;
+
 const renderGameControls = () => {
   const isBusy = pendingAction !== null;
-  startButton.disabled = isBusy || isGameOpen;
+
+  Object.entries(modeButtons).forEach(([mode, button]) => {
+    const isActive = isGameOpen && currentGameMode === mode;
+    button.disabled = isBusy || isActive;
+    button.classList.toggle('is-active', isActive);
+    button.setAttribute('aria-pressed', String(isActive));
+  });
+
   exitButton.disabled = isBusy || !isGameOpen;
 };
 
@@ -196,10 +241,12 @@ const syncGameState = async () => {
   try {
     const state = await getGameStateInActiveTab();
     isGameOpen = state.isOpen;
-    setStatus(isGameOpen ? '游戏已打开' : '');
+    currentGameMode = isGameOpen ? normalizeGameMode(state.mode) : null;
+    setStatus(isGameOpen ? getOpenStatus(currentGameMode) : '');
   } catch (error) {
     console.warn('Failed to read Happy Clawd game state', error);
     isGameOpen = false;
+    currentGameMode = null;
     setStatus('无法读取游戏状态');
   } finally {
     pendingAction = null;
@@ -207,23 +254,25 @@ const syncGameState = async () => {
   }
 };
 
-const handleStartGame = async () => {
-  if (pendingAction !== null || isGameOpen) {
+const handleStartGame = async (mode: GameMode) => {
+  if (pendingAction !== null || (isGameOpen && currentGameMode === mode)) {
     return;
   }
 
   pendingAction = 'starting';
   renderGameControls();
-  setStatus('正在打开...');
+  setStatus(isGameOpen ? '正在切换...' : '正在打开...');
 
   try {
-    await openGameInActiveTab();
+    const state = await openGameInActiveTab(mode);
     isGameOpen = true;
+    currentGameMode = normalizeGameMode(state.mode ?? mode);
     await sendBackdropBlurToActiveTab(currentBackdropBlurPx);
-    setStatus('游戏已打开');
+    setStatus(getOpenStatus(currentGameMode));
   } catch (error) {
     console.warn('Failed to open Happy Clawd game', error);
     isGameOpen = false;
+    currentGameMode = null;
     setStatus('当前页面无法打开游戏');
   } finally {
     pendingAction = null;
@@ -243,6 +292,7 @@ const handleExitGame = async () => {
   try {
     const state = await closeGameInActiveTab();
     isGameOpen = state.isOpen;
+    currentGameMode = state.isOpen ? normalizeGameMode(state.mode) : null;
     setStatus(state.state === 'already-closed' ? '游戏未打开' : '已退出');
   } catch (error) {
     console.warn('Failed to close Happy Clawd game', error);
@@ -253,8 +303,10 @@ const handleExitGame = async () => {
   }
 };
 
-startButton.addEventListener('click', () => {
-  void handleStartGame();
+Object.entries(modeButtons).forEach(([mode, button]) => {
+  button.addEventListener('click', () => {
+    void handleStartGame(normalizeGameMode(mode));
+  });
 });
 
 exitButton.addEventListener('click', () => {
