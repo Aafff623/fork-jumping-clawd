@@ -58,8 +58,14 @@
               <path d="M89.29 144.59H105.05V172.77H89.29V144.59Z" fill="#DA7756" />
               <path d="M168.67 144.59H184.27V172.77H168.67V144.59Z" fill="#DA7756" />
               <path d="M200.04 144.59H215.22V172.77H200.04V144.59Z" fill="#DA7756" />
-              <path d="m73.24 42.62h16.26v30.66h-16.26v-30.66z" fill="#000" />
-              <path d="m183.9 42.62h16.26v30.66h-16.26v-30.66z" fill="#000" />
+              <path class="clawd-eye" d="m73.24 42.62h16.26v30.66h-16.26v-30.66z" fill="#000" />
+              <path class="clawd-eye" d="m183.9 42.62h16.26v30.66h-16.26v-30.66z" fill="#000" />
+              <g class="clawd-dead-eyes">
+                <path d="M72.25 41.5L90.5 74.4" />
+                <path d="M90.5 41.5L72.25 74.4" />
+                <path d="M182.9 41.5L201.15 74.4" />
+                <path d="M201.15 41.5L182.9 74.4" />
+              </g>
             </svg>
           </div>
         </div>
@@ -83,24 +89,27 @@
               <h2 id="game-over-title">排行榜</h2>
               <ol class="game-over__rank-list" data-rank-list></ol>
             </section>
-            <div class="game-over__score">
-              <span>得分</span>
-              <strong data-final-score>0</strong>
-            </div>
             <form class="game-over__submit" data-score-form>
-              <label class="game-over__field">
+              <div class="game-over__submit-head" aria-hidden="true">
                 <span>名字</span>
-                <input
-                  data-player-name
-                  type="text"
-                  maxlength="24"
-                  autocomplete="off"
-                  inputmode="text"
-                />
-              </label>
-              <button class="game-over__send" data-submit-score type="submit" aria-label="上榜">
-                <span aria-hidden="true">-&gt;</span>
-              </button>
+                <span>得分</span>
+              </div>
+              <div class="game-over__submit-body">
+                <label class="game-over__field">
+                  <input
+                    data-player-name
+                    type="text"
+                    maxlength="24"
+                    autocomplete="off"
+                    inputmode="text"
+                    aria-label="名字"
+                  />
+                </label>
+                <strong class="game-over__final-score" data-final-score>0</strong>
+                <button class="game-over__send" data-submit-score type="submit" aria-label="上榜">
+                  上榜👆
+                </button>
+              </div>
             </form>
             <div class="game-over__actions">
               <button class="game-over__button game-over__button--primary" data-retry-game type="button">

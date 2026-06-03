@@ -16,24 +16,27 @@ const GAME_OVER_MODAL_CONTENT = `
       <h2 id="game-over-title">\u6392\u884C\u699C</h2>
       <ol class="game-over__rank-list" data-rank-list></ol>
     </section>
-    <div class="game-over__score">
-      <span>\u5F97\u5206</span>
-      <strong data-final-score>0</strong>
-    </div>
     <form class="game-over__submit" data-score-form>
-      <label class="game-over__field">
+      <div class="game-over__submit-head" aria-hidden="true">
         <span>\u540D\u5B57</span>
-        <input
-          data-player-name
-          type="text"
-          maxlength="24"
-          autocomplete="off"
-          inputmode="text"
-        />
-      </label>
-      <button class="game-over__send" data-submit-score type="submit" aria-label="\u4E0A\u699C">
-        <span aria-hidden="true">-&gt;</span>
-      </button>
+        <span>\u5F97\u5206</span>
+      </div>
+      <div class="game-over__submit-body">
+        <label class="game-over__field">
+          <input
+            data-player-name
+            type="text"
+            maxlength="24"
+            autocomplete="off"
+            inputmode="text"
+            aria-label="\u540D\u5B57"
+          />
+        </label>
+        <strong class="game-over__final-score" data-final-score>0</strong>
+        <button class="game-over__send" data-submit-score type="submit" aria-label="\u4E0A\u699C">
+          \u4E0A\u699C\uD83D\uDC46
+        </button>
+      </div>
     </form>
     <div class="game-over__actions">
       <button class="game-over__button game-over__button--primary" data-retry-game type="button">

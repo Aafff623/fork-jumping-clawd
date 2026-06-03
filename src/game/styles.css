@@ -181,8 +181,23 @@ body {
   mask-image: linear-gradient(to bottom, #000 0%, #000 34%, transparent 100%);
 }
 
-.clawd-layer--body.is-hit path[fill="#DA7756"] {
-  fill: var(--danger);
+.clawd-dead-eyes {
+  display: none;
+}
+
+.clawd-dead-eyes path {
+  fill: none;
+  stroke: #000000;
+  stroke-linecap: round;
+  stroke-width: 7;
+}
+
+.clawd-layer--body.is-hit .clawd-eye {
+  opacity: 0;
+}
+
+.clawd-layer--body.is-hit .clawd-dead-eyes {
+  display: block;
 }
 
 .clawd-velocity {
@@ -334,42 +349,50 @@ body {
   text-align: right;
 }
 
-.game-over__score {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 18px;
-  padding: 10px 0;
+.game-over__submit-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(52px, auto) 68px;
+  align-items: center;
+  gap: 8px;
+  padding-top: 10px;
   border-top: 1px solid #e2e8f0;
-  border-bottom: 1px solid #e2e8f0;
 }
 
-.game-over__score span,
-.game-over__field span {
+.game-over__submit-head span {
   color: #64748b;
   font-size: 12px;
   font-weight: 650;
   line-height: 1.2;
 }
 
-.game-over__score strong {
+.game-over__submit-head span:nth-child(2) {
+  text-align: center;
+}
+
+.game-over__submit-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(52px, auto) 68px;
+  align-items: center;
+  gap: 8px;
+}
+
+.game-over__final-score {
   color: #111827;
   font-size: 30px;
-  font-weight: 780;
+  font-weight: 700;
   line-height: 1;
   font-variant-numeric: tabular-nums;
+  text-align: center;
 }
 
 .game-over__submit {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 40px;
-  align-items: end;
   gap: 8px;
 }
 
 .game-over__field {
-  display: grid;
-  gap: 7px;
+  display: block;
+  min-width: 0;
 }
 
 .game-over__field input {
@@ -390,16 +413,19 @@ body {
 }
 
 .game-over__send {
-  display: grid;
-  width: 40px;
+  display: inline-flex;
+  width: 100%;
   height: 38px;
-  place-items: center;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
   border: 1px solid #111827;
   border-radius: 8px;
   background: #111827;
   color: #ffffff;
   cursor: pointer;
-  font: 800 16px/1 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font: 800 12px/1.1 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  white-space: nowrap;
 }
 
 .game-over__send:hover {
