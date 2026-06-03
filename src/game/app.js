@@ -282,6 +282,7 @@ const getBottomSpikeHitSurfaceY = () =>
   getBottomSpikeTipSurfaceY() - getBottomDeathEmbedDepth();
 const getClawdBodyTopY = (motion, bodyCollisionHeight) =>
   motion.surfaceY + bodyCollisionHeight * motion.scaleY;
+const getBottomSpikeCollisionSurfaceY = () => getBottomSpikeHitSurfaceY();
 const getJumpLift = (power) =>
   lerp(
     stageSize.height * CHARGE_MIN_LIFT_RATIO,
@@ -334,6 +335,65 @@ const canApplyCompetitiveModeDrift = () =>
   game.phase === "charging" ||
   game.phase === "jumping";
 
+const getJumpElapsedFrame = ({ jump, now }) =>
+  jump.startFrame + ((now - jump.startedAt) / 1000) * BASELINE_ANIMATION_FPS;
+
+const getJumpTimeAtFrame = ({ jump, frame }) =>
+  jump.startedAt + ((frame - jump.startFrame) / BASELINE_ANIMATION_FPS) * 1000;
+
+const getPredictedCompetitiveJumpCameraOffset = ({
+  startedAt,
+  startFrame,
+  frame,
+}) => {
+  if (!isCompetitiveMode()) {
+    return 0;
+  }
+
+  const frameSeconds = Math.max(
+    0,
+    (frame - startFrame) / BASELINE_ANIMATION_FPS,
+  );
+
+  if (frameSeconds <= 0) {
+    return 0;
+  }
+
+  const driftStartedAt = competitiveModeDrift.startedAt || startedAt;
+  const startSeconds = Math.max(0, (startedAt - driftStartedAt) / 1000);
+  const endSeconds = Math.max(
+    startSeconds,
+    (startedAt + frameSeconds * 1000 - driftStartedAt) / 1000,
+  );
+
+  return (
+    stageSize.height *
+    getCompetitiveModeDriftSpeedIntegral({
+      startSeconds,
+      endSeconds,
+    })
+  );
+};
+
+const getCompetitiveModeDriftAppliedUntil = (now) => {
+  if (
+    isCompetitiveMode() &&
+    game.phase === "jumping" &&
+    game.jump?.outcome === "top" &&
+    typeof game.jump.freezeFrame === "number"
+  ) {
+    return Math.min(
+      now,
+      getJumpTimeAtFrame({
+        jump: game.jump,
+        frame: game.jump.freezeFrame,
+      }),
+    );
+  }
+
+  return now;
+};
+
 const applyCompetitiveModeDrift = (now) => {
   if (!isCompetitiveMode() || !stageSize.height) {
     return;
@@ -349,12 +409,20 @@ const applyCompetitiveModeDrift = (now) => {
     return;
   }
 
+  const appliedUntil = getCompetitiveModeDriftAppliedUntil(now);
+
+  if (appliedUntil <= competitiveModeDrift.lastAppliedAt) {
+    competitiveModeDrift.lastAppliedAt = now;
+    return;
+  }
+
   const deltaSeconds = Math.max(
     0,
-    (now - competitiveModeDrift.lastAppliedAt) / 1000,
+    (appliedUntil - competitiveModeDrift.lastAppliedAt) / 1000,
   );
 
   if (deltaSeconds <= 0) {
+    competitiveModeDrift.lastAppliedAt = now;
     return;
   }
 
@@ -365,7 +433,7 @@ const applyCompetitiveModeDrift = (now) => {
   );
   const currentElapsedSeconds = Math.max(
     0,
-    (now - competitiveModeDrift.startedAt) / 1000,
+    (appliedUntil - competitiveModeDrift.startedAt) / 1000,
   );
   const driftDistanceRatio = getCompetitiveModeDriftSpeedIntegral({
     startSeconds: previousElapsedSeconds,
@@ -689,6 +757,10 @@ const rescaleStageLayout = (previousStageSize) => {
     game.jump.cameraMove.endCameraSurfaceY *= heightScale;
   }
 
+  if (typeof game.jump?.freezeCameraSurfaceOffset === "number") {
+    game.jump.freezeCameraSurfaceOffset *= heightScale;
+  }
+
   rescaleJumpStateProps({ widthScale, heightScale });
 };
 
@@ -698,9 +770,21 @@ const resyncJumpCollisionFrame = () => {
   }
 
   if (game.jump.outcome === "top") {
-    const topCollisionFrame = findTopCollisionFrame(game.jump.jumpStateProps);
+    const topCollisionFrame = findTopCollisionFrame(game.jump.jumpStateProps, {
+      getCameraSurfaceOffsetAtFrame: (frame) =>
+        getPredictedCompetitiveJumpCameraOffset({
+          startedAt: game.jump.startedAt,
+          startFrame: game.jump.startFrame,
+          frame,
+        }),
+    });
+
+    if (topCollisionFrame === null) {
+      return;
+    }
+
     game.jump.freezeFrame = topCollisionFrame;
-    game.jump.resolveFrame = topCollisionFrame + TOP_DEATH_DURATION_FRAMES;
+    game.jump.resolveFrame = topCollisionFrame + getTopDeathDurationFrames();
     return;
   }
 
@@ -1033,7 +1117,10 @@ const getChargeColor = (feedback) => {
   }
 };
 
-const findTopCollisionFrame = (jumpStateProps) => {
+const findTopCollisionFrame = (
+  jumpStateProps,
+  { getCameraSurfaceOffsetAtFrame = () => 0 } = {},
+) => {
   const spikeTipY = getSpikeTipSurfaceY();
   let previousFrame = 0;
   let previousTopY = null;
@@ -1047,7 +1134,7 @@ const findTopCollisionFrame = (jumpStateProps) => {
     const bodyTopY = getClawdBodyTopY(
       motion,
       jumpStateProps.bodyCollisionHeight,
-    );
+    ) - getCameraSurfaceOffsetAtFrame(frame);
 
     if (bodyTopY >= spikeTipY) {
       if (previousTopY === null || bodyTopY === previousTopY) {
@@ -1064,7 +1151,7 @@ const findTopCollisionFrame = (jumpStateProps) => {
     previousTopY = bodyTopY;
   }
 
-  return CLAWD_JUMP_TIMING.landingFrame;
+  return null;
 };
 
 const findBottomCollisionFrame = (jumpStateProps) => {
@@ -1098,30 +1185,47 @@ const findBottomCollisionFrame = (jumpStateProps) => {
   return CYCLE_DURATION_FRAMES;
 };
 
+const getTopDeathDurationFrames = () =>
+  isCompetitiveMode() ? TOP_DEATH_IMPACT_HOLD_FRAMES : TOP_DEATH_DURATION_FRAMES;
+
 const createJump = ({ now, chargePower }) => {
   const start = getPlatformAnchor(game.current);
   const target = getPlatformAnchor(game.target);
   const targetWorld = getPlatformWorldAnchor(game.target);
   const highAirY = start.surfaceY + getJumpLift(chargePower);
   const clearsTarget = highAirY >= target.surfaceY;
-  const hitsTop =
-    highAirY + getJumpHangtimeLift() + getClawdBodyCollisionHeight() >=
-    getSpikeTipSurfaceY();
-  const outcome = hitsTop ? "top" : clearsTarget ? "success" : "low";
-  const end = {
+  const targetEnd = {
     x: target.x,
-    surfaceY:
-      outcome === "success" || outcome === "top"
-        ? target.surfaceY
-        : getBottomSpikeHitSurfaceY(),
+    surfaceY: target.surfaceY,
   };
-  const jumpStateProps = createJumpStateProps({
+  const getCameraSurfaceOffsetAtFrame = (frame) =>
+    getPredictedCompetitiveJumpCameraOffset({
+      startedAt: now,
+      startFrame: JUMP_RELEASE_START_FRAME,
+      frame,
+    });
+  let jumpStateProps = createJumpStateProps({
     start,
-    end,
+    end: targetEnd,
     highAirY,
   });
-  const topCollisionFrame =
-    outcome === "top" ? findTopCollisionFrame(jumpStateProps) : null;
+  const topCollisionFrame = findTopCollisionFrame(jumpStateProps, {
+    getCameraSurfaceOffsetAtFrame,
+  });
+  const outcome =
+    topCollisionFrame !== null ? "top" : clearsTarget ? "success" : "low";
+
+  if (outcome === "low") {
+    jumpStateProps = createJumpStateProps({
+      start,
+      end: {
+        x: target.x,
+        surfaceY: getBottomSpikeHitSurfaceY(),
+      },
+      highAirY,
+    });
+  }
+
   const bottomCollisionFrame =
     outcome === "low" ? findBottomCollisionFrame(jumpStateProps) : null;
   const freezeFrame = topCollisionFrame ?? bottomCollisionFrame;
@@ -1145,7 +1249,7 @@ const createJump = ({ now, chargePower }) => {
     freezeFrame,
     resolveFrame:
       outcome === "top"
-        ? topCollisionFrame + TOP_DEATH_DURATION_FRAMES
+        ? topCollisionFrame + getTopDeathDurationFrames()
         : outcome === "low"
           ? bottomCollisionFrame + BOTTOM_DEATH_DURATION_FRAMES
         : CYCLE_DURATION_FRAMES,
@@ -1323,6 +1427,7 @@ const renderTopDeathPose = ({
   deathFrame,
   jumpStateProps,
   cameraSurfaceOffset = 0,
+  fallEnabled = true,
 }) => {
   const collisionMotion = getClawdJumpState({
     ...jumpStateProps,
@@ -1335,9 +1440,11 @@ const renderTopDeathPose = ({
     jumpStateProps,
     clawdMotion: collisionMotion,
   });
-  const fallProgress = clamp01(
-    (deathFrame - TOP_DEATH_IMPACT_HOLD_FRAMES) / TOP_DEATH_FALL_FRAMES,
-  );
+  const fallProgress = fallEnabled
+    ? clamp01(
+        (deathFrame - TOP_DEATH_IMPACT_HOLD_FRAMES) / TOP_DEATH_FALL_FRAMES,
+      )
+    : 0;
   const fallDistance =
     stageSize.height * TOP_DEATH_FALL_DISTANCE_RATIO * Math.pow(fallProgress, 2);
   const jumpDirection =
@@ -1345,8 +1452,7 @@ const renderTopDeathPose = ({
   const tiltDegrees = TOP_DEATH_FALL_TILT_DEGREES * jumpDirection * fallProgress;
   const scaleX = lerp(collisionMotion.scaleX, 0.94, fallProgress);
   const scaleY = lerp(collisionMotion.scaleY, 1.08, fallProgress);
-  const surfaceY =
-    collisionMotion.surfaceY - cameraSurfaceOffset - fallDistance;
+  const surfaceY = collisionMotion.surfaceY - cameraSurfaceOffset - fallDistance;
   const clawdBottom = surfaceY - clawdSize.bottomPadding * scaleY;
 
   setClawdHitState(true);
@@ -1366,7 +1472,6 @@ const renderTopDeathPose = ({
 const renderBottomDeathPose = ({
   collisionFrame,
   jumpStateProps,
-  cameraSurfaceOffset = 0,
 }) => {
   const collisionMotion = getClawdJumpState({
     ...jumpStateProps,
@@ -1380,8 +1485,7 @@ const renderBottomDeathPose = ({
     clawdMotion: collisionMotion,
   });
   const clawdBottom =
-    collisionMotion.surfaceY -
-    cameraSurfaceOffset -
+    getBottomSpikeCollisionSurfaceY() -
     clawdSize.bottomPadding * collisionMotion.scaleY;
   const tiltDegrees = getBottomDeathTiltDegrees({
     frame: collisionFrame,
@@ -1419,6 +1523,14 @@ const syncJumpCamera = ({ jump, frame }) => {
   syncPlatforms();
 
   return cameraSurfaceY - startCameraSurfaceY;
+};
+
+const getJumpFreezeCameraSurfaceOffset = ({ jump, cameraSurfaceOffset }) => {
+  if (typeof jump.freezeCameraSurfaceOffset !== "number") {
+    jump.freezeCameraSurfaceOffset = cameraSurfaceOffset;
+  }
+
+  return jump.freezeCameraSurfaceOffset;
 };
 
 const getJumpScreenBodyBottomY = ({ jump, frame, cameraSurfaceOffset }) => {
@@ -1604,9 +1716,7 @@ const renderFrame = (now) => {
   }
 
   if (game.phase === "jumping" && game.jump) {
-    const elapsedFrame =
-      game.jump.startFrame +
-      ((now - game.jump.startedAt) / 1000) * BASELINE_ANIMATION_FPS;
+    const elapsedFrame = getJumpElapsedFrame({ jump: game.jump, now });
     const frame = Math.min(elapsedFrame, CYCLE_DURATION_FRAMES);
     const cameraSurfaceOffset = syncJumpCamera({
       jump: game.jump,
@@ -1618,11 +1728,17 @@ const renderFrame = (now) => {
       game.jump.freezeFrame !== null &&
       elapsedFrame >= game.jump.freezeFrame
     ) {
+      const freezeCameraSurfaceOffset = getJumpFreezeCameraSurfaceOffset({
+        jump: game.jump,
+        cameraSurfaceOffset,
+      });
+
       renderTopDeathPose({
         collisionFrame: game.jump.freezeFrame,
         deathFrame: elapsedFrame - game.jump.freezeFrame,
         jumpStateProps: game.jump.jumpStateProps,
-        cameraSurfaceOffset,
+        cameraSurfaceOffset: freezeCameraSurfaceOffset,
+        fallEnabled: !isCompetitiveMode(),
       });
 
       if (elapsedFrame >= game.jump.resolveFrame) {
@@ -1639,7 +1755,6 @@ const renderFrame = (now) => {
       renderBottomDeathPose({
         collisionFrame: game.jump.freezeFrame,
         jumpStateProps: game.jump.jumpStateProps,
-        cameraSurfaceOffset,
       });
 
       if (elapsedFrame >= game.jump.resolveFrame) {
@@ -1796,6 +1911,7 @@ const releaseCharge = (now) => {
     return;
   }
 
+  applyCompetitiveModeDrift(now);
   game.chargePower = getChargePower(now);
   game.phase = "jumping";
   game.jump = createJump({
