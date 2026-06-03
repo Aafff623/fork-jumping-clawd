@@ -1,10 +1,22 @@
 import { defineConfig } from 'wxt';
 
+const extensionIcon = {
+  16: 'icon/16.png',
+  32: 'icon/32.png',
+  48: 'icon/48.png',
+  128: 'icon/128.png',
+};
+
 // See https://wxt.dev/api/config.html
 export default defineConfig({
   manifest: {
     name: 'Jumping Clawd',
-    description: 'Play Jumping Clawd on the current page.',
+    short_name: 'Clawd Jump',
+    description: 'Play Jumping Clawd on webpages or in a standalone tab.',
+    action: {
+      default_title: 'Jumping Clawd',
+      default_icon: extensionIcon,
+    },
     permissions: ['activeTab', 'scripting', 'storage'],
     host_permissions: ['https://xletejbcfylwplhnlbjo.supabase.co/*'],
     web_accessible_resources: [

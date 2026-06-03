@@ -1,8 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title desc">
   <title id="title">Jumping Clawd icon</title>
-  <desc id="desc">The Clawd mascot body without arms or feet.</desc>
+  <desc id="desc">The Clawd mascot jumping upward with diagonal down-swept arms and four slim connected legs.</desc>
 
-  <path d="M16 31.97H112V96.03H16V31.97Z" fill="#DA7756" />
-  <path d="M32.2 48.95H40.35V64.32H32.2V48.95Z" fill="#000000" />
-  <path d="M87.93 48.95H96.08V64.32H87.93V48.95Z" fill="#000000" />
+  <path d="M22 48L35 66L14 97L1 79Z" fill="#DA7756" />
+  <path d="M106 48L127 79L114 97L93 66Z" fill="#DA7756" />
+  <path d="M18 1H110V76H101V127H91V76H77V127H67V76H59V127H49V76H35V127H25V76H18V1Z" fill="#DA7756" />
+  <path d="M34 30H43V47H34V30Z" fill="#000000" />
+  <path d="M85 30H94V47H85V30Z" fill="#000000" />
 </svg>

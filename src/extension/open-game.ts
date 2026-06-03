@@ -20,8 +20,15 @@ export type GameOverlayState = {
   mode?: GameMode | null;
 };
 
-const isTopLevelAboutBlankUrl = (url: string | undefined) =>
-  typeof url === 'string' && /^about:(blank|srcdoc)([?#].*)?$/i.test(url);
+const STANDALONE_GAME_TAB_URL_PATTERNS = [
+  /^about:(blank|newtab|srcdoc)([?#].*)?$/i,
+  /^(chrome|edge|brave|vivaldi|opera):\/\/(newtab|new-tab-page|new-tab-page-third-party|startpage)\/?([?#].*)?$/i,
+];
+
+const shouldOpenStandaloneGameInTab = (url: string | undefined) =>
+  typeof url !== 'string' ||
+  url.trim() === '' ||
+  STANDALONE_GAME_TAB_URL_PATTERNS.some((pattern) => pattern.test(url));
 
 const getRuntimeGameUrl = (url: string | undefined) => {
   if (typeof url !== 'string') {
@@ -134,7 +141,7 @@ export const openGameInActiveTab = async (
     throw new Error('No active tab found');
   }
 
-  if (isTopLevelAboutBlankUrl(activeTab.url)) {
+  if (shouldOpenStandaloneGameInTab(activeTab.url)) {
     return openStandaloneGameInTab(activeTab.id, mode);
   }
 
@@ -188,6 +195,15 @@ export const closeGameInActiveTab = async (): Promise<GameOverlayState> => {
     };
   }
 
+  if (shouldOpenStandaloneGameInTab(activeTab.url)) {
+    return {
+      ok: true,
+      state: 'already-closed',
+      isOpen: false,
+      mode: null,
+    };
+  }
+
   try {
     return await sendCloseGameMessage(activeTab.id);
   } catch (error) {
@@ -220,6 +236,15 @@ export const getGameStateInActiveTab = async (): Promise<GameOverlayState> => {
       state: 'standalone-game-page',
       isOpen: true,
       mode: getStandaloneGameMode(activeTab.url),
+    };
+  }
+
+  if (shouldOpenStandaloneGameInTab(activeTab.url)) {
+    return {
+      ok: true,
+      state: 'closed',
+      isOpen: false,
+      mode: null,
     };
   }
 

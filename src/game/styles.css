@@ -21,6 +21,18 @@
   --score-outline: #000000;
 }
 
+:root[data-game-context="standalone"] {
+  color-scheme: light;
+  --platform: #050505;
+  --platform-target: var(--platform);
+  --platform-soft: rgba(5, 5, 5, 0.1);
+  --platform-border: rgba(5, 5, 5, 0.72);
+  --platform-strong: rgba(5, 5, 5, 0.88);
+  --platform-shadow: rgba(5, 5, 5, 0.16);
+  --focus: rgba(5, 5, 5, 0.32);
+  --score-outline: #ffffff;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -56,6 +68,13 @@ body {
   background: transparent;
   user-select: none;
   touch-action: none;
+}
+
+:root[data-game-context="standalone"],
+:root[data-game-context="standalone"] body,
+:root[data-game-context="standalone"] .app,
+:root[data-game-context="standalone"] .stage {
+  background: #f8fafc;
 }
 
 .spikes {

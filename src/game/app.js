@@ -91,11 +91,10 @@ import {
 const PAGE_SURFACE_THEMES = new Set(["light", "dark"]);
 const GAME_MODES = new Set(["casual", "challenge"]);
 const DEFAULT_GAME_MODE = "casual";
+const searchParams = new URLSearchParams(window.location.search);
 
 const getInitialPageSurfaceTheme = () => {
-  const surfaceTheme = new URLSearchParams(window.location.search).get(
-    "surface",
-  );
+  const surfaceTheme = searchParams.get("surface");
 
   if (PAGE_SURFACE_THEMES.has(surfaceTheme)) {
     return surfaceTheme;
@@ -105,12 +104,18 @@ const getInitialPageSurfaceTheme = () => {
 };
 
 const getInitialGameMode = () => {
-  const mode = new URLSearchParams(window.location.search).get("mode");
+  const mode = searchParams.get("mode");
 
   return GAME_MODES.has(mode) ? mode : DEFAULT_GAME_MODE;
 };
 
-document.documentElement.dataset.pageSurface = getInitialPageSurfaceTheme();
+const pageSurfaceTheme = getInitialPageSurfaceTheme();
+document.documentElement.dataset.pageSurface = pageSurfaceTheme;
+document.documentElement.dataset.gameContext = PAGE_SURFACE_THEMES.has(
+  searchParams.get("surface"),
+)
+  ? "overlay"
+  : "standalone";
 const gameMode = getInitialGameMode();
 document.documentElement.dataset.gameMode = gameMode;
 const isChallengeMode = () => gameMode === "challenge";
