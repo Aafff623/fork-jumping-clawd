@@ -83,6 +83,10 @@ import {
   lerp,
   pickRandom,
 } from "./math.js";
+import {
+  fetchLeaderboardEntries,
+  submitLeaderboardEntry,
+} from "./leaderboard.js";
 
 const PAGE_SURFACE_THEMES = new Set(["light", "dark"]);
 const GAME_MODES = new Set(["casual", "challenge"]);
@@ -208,31 +212,65 @@ const game = {
   respawnStartedAt: 0,
 };
 
-const FAKE_RANK_ENTRIES = [
-  { id: "fake-1", name: "Nico", score: 18 },
-  { id: "fake-2", name: "Ada", score: 12 },
-  { id: "fake-3", name: "Kai", score: 7 },
-];
+const RANK_ENTRY_LIMIT = 10;
 
-let submittedRankEntry = null;
+const rankState = {
+  entries: [],
+  highlightedEntryId: null,
+  isLoading: false,
+  isSubmitting: false,
+  hasSubmittedCurrentScore: false,
+  error: null,
+};
+
+let rankLoadId = 0;
 
 const getPlayerName = () => playerNameInput.value.trim();
 
+const sortRankEntries = (entries) =>
+  [...entries].sort((a, b) => {
+    if (b.score !== a.score) {
+      return b.score - a.score;
+    }
+
+    return String(a.createdAt ?? "").localeCompare(String(b.createdAt ?? ""));
+  });
+
 const getRankEntries = () =>
-  [...FAKE_RANK_ENTRIES, ...(submittedRankEntry ? [submittedRankEntry] : [])]
-    .sort((a, b) => b.score - a.score)
+  sortRankEntries(rankState.entries)
+    .slice(0, RANK_ENTRY_LIMIT)
     .map((entry, index) => ({
       ...entry,
       rank: index + 1,
     }));
 
+const renderRankStatus = (message) => {
+  const row = document.createElement("li");
+  row.className = "game-over__rank-row is-status";
+  row.textContent = message;
+  rankList.append(row);
+};
+
 const renderRankList = () => {
   rankList.textContent = "";
 
-  getRankEntries().forEach((entry) => {
+  const entries = getRankEntries();
+
+  if (entries.length === 0) {
+    renderRankStatus(
+      rankState.isLoading
+        ? "加载中"
+        : rankState.error
+          ? "榜单暂时连不上"
+          : "暂无记录",
+    );
+    return;
+  }
+
+  entries.forEach((entry) => {
     const row = document.createElement("li");
     row.className = "game-over__rank-row";
-    row.classList.toggle("is-player", entry.id === "player");
+    row.classList.toggle("is-player", entry.id === rankState.highlightedEntryId);
 
     const rank = document.createElement("span");
     rank.className = "game-over__rank-number";
@@ -252,10 +290,54 @@ const renderRankList = () => {
 };
 
 const updateScoreSubmitState = () => {
-  submitScoreButton.disabled = getPlayerName().length === 0;
+  submitScoreButton.disabled =
+    rankState.isSubmitting ||
+    rankState.hasSubmittedCurrentScore ||
+    getPlayerName().length === 0;
 };
 
-const submitPlayerScore = () => {
+const loadRankEntries = async () => {
+  const loadId = rankLoadId + 1;
+  rankLoadId = loadId;
+  rankState.isLoading = true;
+  rankState.error = null;
+  renderRankList();
+
+  try {
+    const entries = await fetchLeaderboardEntries();
+
+    if (loadId !== rankLoadId) {
+      return;
+    }
+
+    rankState.entries = entries;
+    rankState.error = null;
+  } catch (error) {
+    if (loadId !== rankLoadId) {
+      return;
+    }
+
+    rankState.error = error;
+    console.warn("Failed to load leaderboard", error);
+  } finally {
+    if (loadId === rankLoadId) {
+      rankState.isLoading = false;
+      renderRankList();
+    }
+  }
+};
+
+const mergeRankEntry = (entry) => {
+  const entriesById = new Map(rankState.entries.map((item) => [item.id, item]));
+  entriesById.set(entry.id, entry);
+  rankState.entries = sortRankEntries([...entriesById.values()]);
+};
+
+const submitPlayerScore = async () => {
+  if (rankState.hasSubmittedCurrentScore) {
+    return;
+  }
+
   const name = getPlayerName();
 
   if (!name) {
@@ -264,13 +346,34 @@ const submitPlayerScore = () => {
     return;
   }
 
-  submittedRankEntry = {
-    id: "player",
-    name,
-    score: game.score,
-  };
-  renderRankList();
-  submitScoreButton.classList.add("is-sent");
+  rankState.isSubmitting = true;
+  rankState.error = null;
+  submitScoreButton.classList.remove("is-sent");
+  submitScoreButton.textContent = "提交中";
+  updateScoreSubmitState();
+
+  try {
+    const entry = await submitLeaderboardEntry({
+      name,
+      score: game.score,
+    });
+
+    rankState.highlightedEntryId = entry.id;
+    rankState.hasSubmittedCurrentScore = true;
+    mergeRankEntry(entry);
+    renderRankList();
+    submitScoreButton.classList.add("is-sent");
+    submitScoreButton.textContent = "已上榜";
+    void loadRankEntries();
+  } catch (error) {
+    rankState.error = error;
+    console.warn("Failed to submit score", error);
+    submitScoreButton.textContent = "重试";
+    renderRankList();
+  } finally {
+    rankState.isSubmitting = false;
+    updateScoreSubmitState();
+  }
 };
 
 const getStageRect = () => stage.getBoundingClientRect();
@@ -1264,10 +1367,14 @@ const hideChallengeGameOver = () => {
 
 const showChallengeGameOver = () => {
   finalScoreValue.textContent = String(game.score);
+  rankState.highlightedEntryId = null;
+  rankState.hasSubmittedCurrentScore = false;
   submitScoreButton.classList.remove("is-sent");
+  submitScoreButton.textContent = "上榜👆";
   renderRankList();
   updateScoreSubmitState();
   gameOverModal.hidden = false;
+  void loadRankEntries();
 
   requestAnimationFrame(() => {
     if (!gameOverModal.hidden) {
@@ -1989,11 +2096,17 @@ window.addEventListener("blur", () => {
 
 scoreForm.addEventListener("submit", (event) => {
   event.preventDefault();
-  submitPlayerScore();
+  void submitPlayerScore();
 });
 
 playerNameInput.addEventListener("input", () => {
+  if (rankState.hasSubmittedCurrentScore) {
+    updateScoreSubmitState();
+    return;
+  }
+
   submitScoreButton.classList.remove("is-sent");
+  submitScoreButton.textContent = "上榜👆";
   updateScoreSubmitState();
 });
 

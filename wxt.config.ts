@@ -6,6 +6,7 @@ export default defineConfig({
     name: 'Jumping Clawd',
     description: 'Play Jumping Clawd on the current page.',
     permissions: ['activeTab', 'scripting', 'storage'],
+    host_permissions: ['https://xletejbcfylwplhnlbjo.supabase.co/*'],
     web_accessible_resources: [
       {
         resources: ['game.html'],

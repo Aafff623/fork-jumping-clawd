@@ -347,6 +347,12 @@ body {
   color: #ffffff;
 }
 
+.game-over__rank-row.is-status {
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+  color: #4b4b4b;
+}
+
 .game-over__rank-number {
   color: currentColor;
   font-variant-numeric: tabular-nums;
