@@ -384,6 +384,10 @@ body {
     black 85%,
     rgba(0, 0, 0, 0.15)
   );
+  -webkit-mask-clip: content-box;
+  mask-clip: content-box;
+  -webkit-mask-origin: content-box;
+  mask-origin: content-box;
 }
 
 .game-over__rank-list.can-scroll-up {
@@ -397,6 +401,10 @@ body {
     black 85%,
     rgba(0, 0, 0, 0.15)
   );
+  -webkit-mask-clip: content-box;
+  mask-clip: content-box;
+  -webkit-mask-origin: content-box;
+  mask-origin: content-box;
 }
 
 .game-over__rank-list.can-scroll-up.can-scroll-down {
@@ -414,6 +422,10 @@ body {
     black 85%,
     rgba(0, 0, 0, 0.15)
   );
+  -webkit-mask-clip: content-box;
+  mask-clip: content-box;
+  -webkit-mask-origin: content-box;
+  mask-origin: content-box;
 }
 
 .game-over__rank-row.is-status {
