@@ -85,7 +85,8 @@ import {
 } from "./math.js";
 import {
   fetchLeaderboardEntries,
-  submitLeaderboardEntry,
+  upsertLeaderboardEntry,
+  normalizeName,
 } from "./leaderboard.js";
 
 const PAGE_SURFACE_THEMES = new Set(["light", "dark"]);
@@ -233,6 +234,7 @@ const game = {
 };
 
 const RANK_ENTRY_LIMIT = 10;
+const PLAYER_NAME_STORAGE_KEY = "jumping-clawd:player-name";
 
 const rankState = {
   entries: [],
@@ -373,11 +375,26 @@ const submitPlayerScore = async () => {
   updateScoreSubmitState();
 
   try {
-    const entry = await submitLeaderboardEntry({
+    const existingEntry = rankState.entries.find(
+      (entry) => entry.name === normalizeName(name),
+    );
+
+    if (existingEntry && existingEntry.score >= game.score) {
+      rankState.highlightedEntryId = existingEntry.id;
+      rankState.hasSubmittedCurrentScore = true;
+      localStorage.setItem(PLAYER_NAME_STORAGE_KEY, name);
+      renderRankList();
+      submitScoreButton.classList.add("is-sent");
+      submitScoreButton.textContent = "已上榜";
+      return;
+    }
+
+    const entry = await upsertLeaderboardEntry({
       name,
       score: game.score,
     });
 
+    localStorage.setItem(PLAYER_NAME_STORAGE_KEY, name);
     rankState.highlightedEntryId = entry.id;
     rankState.hasSubmittedCurrentScore = true;
     mergeRankEntry(entry);
@@ -394,6 +411,14 @@ const submitPlayerScore = async () => {
     rankState.isSubmitting = false;
     updateScoreSubmitState();
   }
+};
+
+const prefetchLeaderboard = () => {
+  if (!isChallengeMode()) {
+    return;
+  }
+
+  void loadRankEntries();
 };
 
 const getStageRect = () => stage.getBoundingClientRect();
@@ -1391,6 +1416,10 @@ const showChallengeGameOver = () => {
   rankState.hasSubmittedCurrentScore = false;
   submitScoreButton.classList.remove("is-sent");
   submitScoreButton.textContent = "上榜👆";
+  const savedName = localStorage.getItem(PLAYER_NAME_STORAGE_KEY);
+  if (savedName) {
+    playerNameInput.value = savedName;
+  }
   renderRankList();
   updateScoreSubmitState();
   gameOverModal.hidden = false;
@@ -2391,6 +2420,7 @@ updateStageSize();
 renderFrame(performance.now());
 syncAutoPlayUrl();
 postAutoPlayState();
+prefetchLeaderboard();
 frameRequest = requestAnimationFrame(tick);
 
 window.addEventListener("beforeunload", () => {

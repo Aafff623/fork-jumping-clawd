@@ -25,7 +25,7 @@ const normalizeScore = (score) => {
   return Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
 };
 
-const normalizeName = (name) => {
+export const normalizeName = (name) => {
   const value = String(name ?? "").trim();
 
   return value.length > 0 ? value.slice(0, 32) : "Anonymous";
@@ -76,30 +76,31 @@ export const fetchLeaderboardEntries = async () => {
   return Array.isArray(rows) ? rows.map(normalizeLeaderboardEntry) : [];
 };
 
-export const submitLeaderboardEntry = async ({ name, score }) => {
+export const upsertLeaderboardEntry = async ({ name, score }) => {
   const displayName = normalizeName(name);
   const normalizedScore = normalizeScore(score);
 
-  const response = await fetch(`${SUPABASE_REST_URL}/${LEADERBOARD_TABLE}`, {
-    method: "POST",
-    headers: {
-      ...SUPABASE_HEADERS,
-      "Content-Type": "application/json",
-      Prefer: "return=representation",
+  const response = await fetch(
+    `${SUPABASE_REST_URL}/rpc/upsert_leaderboard_entry`,
+    {
+      method: "POST",
+      headers: {
+        ...SUPABASE_HEADERS,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        p_display_name: displayName,
+        p_score: normalizedScore,
+      }),
     },
-    body: JSON.stringify({
-      display_name: displayName,
-      score: normalizedScore,
-    }),
-  });
+  );
 
   await assertOk(response, "Failed to submit score");
 
-  const rows = await readJson(response);
-  const inserted = Array.isArray(rows) ? rows[0] : null;
+  const result = await readJson(response);
 
   return normalizeLeaderboardEntry(
-    inserted ?? {
+    result ?? {
       id: crypto.randomUUID(),
       display_name: displayName,
       score: normalizedScore,
