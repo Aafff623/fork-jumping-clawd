@@ -67,6 +67,14 @@ app.innerHTML = `
         </span>
       </div>
       <div class="shortcut-row">
+        <span>自动 play</span>
+        <span class="key-combo" aria-label="Ctrl A">
+          <kbd>Ctrl</kbd>
+          <span class="shortcut-plus">+</span>
+          <kbd>A</kbd>
+        </span>
+      </div>
+      <div class="shortcut-row">
         <span>退出游戏</span>
         <span class="key-combo" aria-label="Escape">
           <kbd>Esc</kbd>
@@ -144,11 +152,6 @@ if (
 
 type PendingAction = 'loading' | 'starting' | 'exiting' | null;
 
-const GAME_MODE_LABELS: Record<GameMode, string> = {
-  casual: '休闲模式',
-  challenge: '挑战模式',
-};
-
 const modeButtons: Record<GameMode, HTMLButtonElement> = {
   casual: casualModeButton,
   challenge: challengeModeButton,
@@ -161,14 +164,15 @@ let currentBackdropBlurPx = DEFAULT_BACKDROP_BLUR_PX;
 let hasAdjustedBackdropBlur = false;
 let isGameOpen = false;
 let currentGameMode: GameMode | null = null;
+let currentAutoPlayEnabled = false;
 let pendingAction: PendingAction = 'loading';
 
 const setStatus = (message: string) => {
   statusText.textContent = message;
 };
 
-const getOpenStatus = (mode: GameMode | null) =>
-  `${GAME_MODE_LABELS[mode ?? DEFAULT_GAME_MODE]}中`;
+const getOpenStatus = () =>
+  `自动 play：${currentAutoPlayEnabled ? '开' : '关'}`;
 
 const renderGameControls = () => {
   const isBusy = pendingAction !== null;
@@ -250,11 +254,13 @@ const syncGameState = async () => {
     const state = await getGameStateInActiveTab();
     isGameOpen = state.isOpen;
     currentGameMode = isGameOpen ? normalizeGameMode(state.mode) : null;
-    setStatus(isGameOpen ? getOpenStatus(currentGameMode) : '');
+    currentAutoPlayEnabled = isGameOpen ? state.autoPlay === true : false;
+    setStatus(isGameOpen ? getOpenStatus() : '');
   } catch (error) {
     console.warn('Failed to read Jumping Clawd game state', error);
     isGameOpen = false;
     currentGameMode = null;
+    currentAutoPlayEnabled = false;
     setStatus('无法读取游戏状态');
   } finally {
     pendingAction = null;
@@ -275,12 +281,14 @@ const handleStartGame = async (mode: GameMode) => {
     const state = await openGameInActiveTab(mode);
     isGameOpen = true;
     currentGameMode = normalizeGameMode(state.mode ?? mode);
+    currentAutoPlayEnabled = state.autoPlay === true;
     await sendBackdropBlurToActiveTab(currentBackdropBlurPx);
-    setStatus(getOpenStatus(currentGameMode));
+    setStatus(getOpenStatus());
   } catch (error) {
     console.warn('Failed to open Jumping Clawd game', error);
     isGameOpen = false;
     currentGameMode = null;
+    currentAutoPlayEnabled = false;
     setStatus('当前页面无法打开游戏');
   } finally {
     pendingAction = null;
@@ -301,6 +309,7 @@ const handleExitGame = async () => {
     const state = await closeGameInActiveTab();
     isGameOpen = state.isOpen;
     currentGameMode = state.isOpen ? normalizeGameMode(state.mode) : null;
+    currentAutoPlayEnabled = state.isOpen ? state.autoPlay === true : false;
     setStatus(state.state === 'already-closed' ? '游戏未打开' : '已退出');
   } catch (error) {
     console.warn('Failed to close Jumping Clawd game', error);

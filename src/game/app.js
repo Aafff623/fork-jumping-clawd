@@ -91,6 +91,14 @@ import {
 const PAGE_SURFACE_THEMES = new Set(["light", "dark"]);
 const GAME_MODES = new Set(["casual", "challenge"]);
 const DEFAULT_GAME_MODE = "casual";
+const AUTO_PLAY_SEARCH_PARAM = "autoPlay";
+const AUTO_PLAY_TRUE_VALUES = new Set(["1", "true", "yes", "on"]);
+const AUTO_PLAY_TOGGLE_MESSAGE_TYPE = "toggle-auto-play";
+const AUTO_PLAY_STATE_MESSAGE_TYPE = "auto-play-state";
+const AUTO_PLAY_POWER_STEP = 0.002;
+const AUTO_PLAY_JUMP_SAMPLE_FRAME_STEP = 0.5;
+const AUTO_PLAY_RELEASE_TOLERANCE = AUTO_PLAY_POWER_STEP * 1.5;
+const AUTO_PLAY_SAFE_POWER_MARGIN = 0.018;
 const searchParams = new URLSearchParams(window.location.search);
 
 const getInitialPageSurfaceTheme = () => {
@@ -109,6 +117,11 @@ const getInitialGameMode = () => {
   return GAME_MODES.has(mode) ? mode : DEFAULT_GAME_MODE;
 };
 
+const getInitialAutoPlayEnabled = () =>
+  AUTO_PLAY_TRUE_VALUES.has(
+    String(searchParams.get(AUTO_PLAY_SEARCH_PARAM) ?? "").toLowerCase(),
+  );
+
 const pageSurfaceTheme = getInitialPageSurfaceTheme();
 document.documentElement.dataset.pageSurface = pageSurfaceTheme;
 document.documentElement.dataset.gameContext = PAGE_SURFACE_THEMES.has(
@@ -119,6 +132,8 @@ document.documentElement.dataset.gameContext = PAGE_SURFACE_THEMES.has(
 const gameMode = getInitialGameMode();
 document.documentElement.dataset.gameMode = gameMode;
 const isChallengeMode = () => gameMode === "challenge";
+let autoPlayEnabled = getInitialAutoPlayEnabled();
+document.documentElement.dataset.autoPlay = String(autoPlayEnabled);
 
 const {
   stage,
@@ -1643,6 +1658,147 @@ const getJumpScreenBodyBottomY = ({ jump, frame, cameraSurfaceOffset }) => {
   return motion.surfaceY - cameraSurfaceOffset;
 };
 
+const isAutoPlayJumpSafe = ({ now, chargePower }) => {
+  const jump = createJump({ now, chargePower });
+
+  if (jump.outcome !== "success") {
+    return false;
+  }
+
+  if (!isChallengeMode()) {
+    return true;
+  }
+
+  for (
+    let frame = jump.startFrame;
+    frame <= jump.resolveFrame;
+    frame += AUTO_PLAY_JUMP_SAMPLE_FRAME_STEP
+  ) {
+    const cameraSurfaceOffset = getPredictedChallengeJumpCameraOffset({
+      startedAt: now,
+      startFrame: jump.startFrame,
+      frame,
+    });
+
+    if (
+      getJumpScreenBodyBottomY({ jump, frame, cameraSurfaceOffset }) <=
+      getBottomSpikeHitSurfaceY()
+    ) {
+      return false;
+    }
+  }
+
+  return true;
+};
+
+const getAutoPlayChargePlan = (now) => {
+  const start = getPlatformAnchor(game.current);
+  const target = getPlatformAnchor(game.target);
+  const targetLift = target.surfaceY - start.surfaceY;
+  const clearPower = getChargePowerForLift(targetLift);
+  const topSurfaceY =
+    getSpikeTipSurfaceY() -
+    getJumpHangtimeLift() -
+    getClawdBodyCollisionHeight();
+  const topPower = getChargePowerForLift(topSurfaceY - start.surfaceY);
+  const safeStartPower = clamp(
+    clearPower + AUTO_PLAY_SAFE_POWER_MARGIN,
+    0,
+    1,
+  );
+  const safeEndPower = clamp(
+    topPower <= 1 ? topPower - AUTO_PLAY_SAFE_POWER_MARGIN : 1,
+    0,
+    1,
+  );
+
+  if (safeStartPower > safeEndPower) {
+    return null;
+  }
+
+  const predictedLandingCameraOffset = getPredictedChallengeJumpCameraOffset({
+    startedAt: now,
+    startFrame: JUMP_RELEASE_START_FRAME,
+    frame: CYCLE_DURATION_FRAMES,
+  });
+  const predictedLandingSurfaceY =
+    target.surfaceY - predictedLandingCameraOffset;
+
+  if (
+    isChallengeMode() &&
+    predictedLandingSurfaceY <=
+      getBottomSpikeHitSurfaceY() + platformVisualThickness
+  ) {
+    return null;
+  }
+
+  const perfectEndPower = clamp(
+    getChargePowerForLift(
+      targetLift + stageSize.height * CHARGE_PERFECT_CLEARANCE_RATIO,
+    ),
+    safeStartPower,
+    safeEndPower,
+  );
+  const preferredPower = clamp(
+    (safeStartPower + perfectEndPower) / 2,
+    safeStartPower,
+    safeEndPower,
+  );
+
+  return {
+    range: {
+      start: safeStartPower,
+      end: safeEndPower,
+    },
+    power: preferredPower,
+  };
+};
+
+const maybeBeginAutoPlayCharge = (now) => {
+  if (!autoPlayEnabled || !initialized || game.phase !== "ready") {
+    return false;
+  }
+
+  const chargePlan = getAutoPlayChargePlan(now);
+
+  if (chargePlan === null) {
+    return false;
+  }
+
+  beginCharge(now);
+  return true;
+};
+
+const maybeReleaseAutoPlayCharge = (now) => {
+  if (!autoPlayEnabled || game.phase !== "charging") {
+    return false;
+  }
+
+  game.chargePower = getChargePower(now);
+  const chargePlan = getAutoPlayChargePlan(now);
+
+  if (chargePlan === null) {
+    return false;
+  }
+
+  const hasReachedTarget =
+    game.chargePower + AUTO_PLAY_RELEASE_TOLERANCE >= chargePlan.power;
+  const isInSafeRange =
+    game.chargePower >= chargePlan.range.start - AUTO_PLAY_RELEASE_TOLERANCE &&
+    game.chargePower <= chargePlan.range.end + AUTO_PLAY_RELEASE_TOLERANCE;
+
+  if (!hasReachedTarget || !isInSafeRange) {
+    return false;
+  }
+
+  if (!isAutoPlayJumpSafe({ now, chargePower: game.chargePower })) {
+    return false;
+  }
+
+  releaseCharge(now);
+  return true;
+};
+
 const maybeTriggerChallengeJumpFallDeath = ({
   now,
   jump,
@@ -1804,8 +1960,16 @@ const renderFrame = (now) => {
     return;
   }
 
+  if (maybeBeginAutoPlayCharge(now)) {
+    return;
+  }
+
   if (game.phase === "respawning") {
     renderRespawnPose(now);
+    return;
+  }
+
+  if (maybeReleaseAutoPlayCharge(now)) {
     return;
   }
 
@@ -2015,7 +2179,72 @@ const requestOverlayClose = () => {
   );
 };
 
+const syncAutoPlayUrl = () => {
+  const url = new URL(window.location.href);
+
+  if (autoPlayEnabled) {
+    url.searchParams.set(AUTO_PLAY_SEARCH_PARAM, "1");
+  } else {
+    url.searchParams.delete(AUTO_PLAY_SEARCH_PARAM);
+  }
+
+  window.history.replaceState(null, "", url);
+};
+
+const postAutoPlayState = () => {
+  if (window.parent === window) {
+    return;
+  }
+
+  window.parent.postMessage(
+    {
+      source: "jumping-clawd-game",
+      type: AUTO_PLAY_STATE_MESSAGE_TYPE,
+      autoPlay: autoPlayEnabled,
+    },
+    "*",
+  );
+};
+
+const setAutoPlayEnabled = (enabled) => {
+  const nextAutoPlayEnabled = Boolean(enabled);
+
+  if (autoPlayEnabled === nextAutoPlayEnabled) {
+    postAutoPlayState();
+    return;
+  }
+
+  autoPlayEnabled = nextAutoPlayEnabled;
+  document.documentElement.dataset.autoPlay = String(autoPlayEnabled);
+  syncAutoPlayUrl();
+  postAutoPlayState();
+
+  if (autoPlayEnabled && game.phase === "charging") {
+    game.phase = "ready";
+    game.chargeStartedAt = 0;
+    game.chargeCycleStartedAt = 0;
+    game.chargePower = 0;
+    syncHud();
+    renderReadyPose();
+  }
+
+  if (autoPlayEnabled) {
+    maybeBeginAutoPlayCharge(performance.now());
+  }
+};
+
+const toggleAutoPlay = () => {
+  setAutoPlayEnabled(!autoPlayEnabled);
+};
+
 const isSpaceEvent = (event) => event.code === "Space" || event.key === " ";
+
+const isAutoPlayToggleEvent = (event) =>
+  event.ctrlKey &&
+  !event.altKey &&
+  !event.metaKey &&
+  !event.shiftKey &&
+  (event.code === "KeyA" || String(event.key).toLowerCase() === "a");
 
 const isGameOverControlEvent = (event) =>
   game.phase === "game-over" &&
@@ -2062,6 +2291,13 @@ window.addEventListener("keydown", (event) => {
     return;
   }
 
+  if (isAutoPlayToggleEvent(event) && !event.repeat) {
+    event.preventDefault();
+    event.stopPropagation();
+    toggleAutoPlay();
+    return;
+  }
+
   if (isGameOverControlEvent(event)) {
     return;
   }
@@ -2071,6 +2307,11 @@ window.addEventListener("keydown", (event) => {
   }
 
   event.preventDefault();
+
+  if (autoPlayEnabled) {
+    return;
+  }
+
   beginCharge(performance.now());
 });
 
@@ -2084,7 +2325,27 @@ window.addEventListener("keyup", (event) => {
   }
 
   event.preventDefault();
+
+  if (autoPlayEnabled) {
+    return;
+  }
+
   releaseCharge(performance.now());
+});
+
+window.addEventListener("message", (event) => {
+  const message = event.data;
+
+  if (
+    !message ||
+    typeof message !== "object" ||
+    message.source !== "jumping-clawd-overlay" ||
+    message.type !== AUTO_PLAY_TOGGLE_MESSAGE_TYPE
+  ) {
+    return;
+  }
+
+  toggleAutoPlay();
 });
 
 window.addEventListener("blur", () => {
@@ -2128,6 +2389,8 @@ resizeObserver.observe(stage);
 
 updateStageSize();
 renderFrame(performance.now());
+syncAutoPlayUrl();
+postAutoPlayState();
 frameRequest = requestAnimationFrame(tick);
 
 window.addEventListener("beforeunload", () => {

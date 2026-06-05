@@ -22,6 +22,8 @@ const GAME_PAGE = '/game.html';
 const OVERLAY_ID = 'jumping-clawd-game-overlay';
 const PAGE_SURFACE_SEARCH_PARAM = 'surface';
 const GAME_MODE_SEARCH_PARAM = 'mode';
+const AUTO_PLAY_TOGGLE_MESSAGE_TYPE = 'toggle-auto-play';
+const AUTO_PLAY_STATE_MESSAGE_TYPE = 'auto-play-state';
 const CONTRAST_SWITCH_LUMINANCE = 0.179;
 const CLEANUP_GLOBAL_KEY = '__jumpingClawdOverlayCleanup__';
 const BLOCKED_PAGE_INPUT_EVENTS = [
@@ -57,6 +59,7 @@ let savedScrollStyles: SavedScrollStyles | null = null;
 let backdropBlurPx = DEFAULT_BACKDROP_BLUR_PX;
 let backdropBlurLoad: Promise<number> | null = null;
 let currentGameMode: GameMode = DEFAULT_GAME_MODE;
+let currentAutoPlayEnabled = false;
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
@@ -82,6 +85,14 @@ const isGameFrameCloseMessage = (message: unknown) =>
   message.source === 'jumping-clawd-game' &&
   message.type === 'close-game';
 
+const isGameFrameAutoPlayStateMessage = (
+  message: unknown,
+): message is { autoPlay: boolean } =>
+  isObject(message) &&
+  message.source === 'jumping-clawd-game' &&
+  message.type === AUTO_PLAY_STATE_MESSAGE_TYPE &&
+  typeof message.autoPlay === 'boolean';
+
 const getShortcutGameMode = (event: KeyboardEvent): GameMode | null => {
   if (
     !event.ctrlKey ||
@@ -101,6 +112,23 @@ const getShortcutGameMode = (event: KeyboardEvent): GameMode | null => {
   }
 
   return null;
+};
+
+const isAutoPlayToggleShortcut = (event: KeyboardEvent) =>
+  event.ctrlKey &&
+  !event.altKey &&
+  !event.metaKey &&
+  !event.shiftKey &&
+  (event.code === 'KeyA' || event.key.toLowerCase() === 'a');
+
+const requestGameAutoPlayToggle = () => {
+  overlayFrame?.contentWindow?.postMessage(
+    {
+      source: 'jumping-clawd-overlay',
+      type: AUTO_PLAY_TOGGLE_MESSAGE_TYPE,
+    },
+    '*',
+  );
 };
 
 const setImportantStyle = (
@@ -505,6 +533,7 @@ const closeGameOverlay = () => {
   overlayHost = null;
   overlayFrame = null;
   currentGameMode = DEFAULT_GAME_MODE;
+  currentAutoPlayEnabled = false;
   restorePageScroll();
 
   return wasOpen;
@@ -583,6 +612,7 @@ const openGameOverlay = async (gameMode: GameMode = DEFAULT_GAME_MODE) => {
   if (overlayHost?.isConnected) {
     if (currentGameMode !== gameMode && overlayFrame) {
       currentGameMode = gameMode;
+      currentAutoPlayEnabled = false;
       overlayFrame.src = getGamePageUrl(getPageSurfaceTheme(), gameMode);
       return 'switched';
     }
@@ -595,6 +625,7 @@ const openGameOverlay = async (gameMode: GameMode = DEFAULT_GAME_MODE) => {
   overlayHost = host;
   overlayFrame = iframe;
   currentGameMode = gameMode;
+  currentAutoPlayEnabled = false;
   lockPageScroll();
   blurActivePageElement();
   document.documentElement.append(host);
@@ -617,6 +648,14 @@ export default defineUnlistedScript({
         event.preventDefault();
         event.stopImmediatePropagation();
         void openGameOverlay(shortcutGameMode);
+        return;
+      }
+
+      if (isAutoPlayToggleShortcut(event) && overlayHost?.isConnected) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        requestGameAutoPlayToggle();
+        focusGameFrame();
         return;
       }
 
@@ -651,6 +690,11 @@ export default defineUnlistedScript({
 
       if (isGameFrameCloseMessage(event.data)) {
         closeGameOverlay();
+        return;
+      }
+
+      if (isGameFrameAutoPlayStateMessage(event.data)) {
+        currentAutoPlayEnabled = event.data.autoPlay;
       }
     };
 
@@ -661,6 +705,7 @@ export default defineUnlistedScript({
           state,
           isOpen: true,
           mode: currentGameMode,
+          autoPlay: currentAutoPlayEnabled,
         }));
       }
 
@@ -672,6 +717,7 @@ export default defineUnlistedScript({
           state: wasOpen ? 'closed' : 'already-closed',
           isOpen: false,
           mode: null,
+          autoPlay: null,
         });
       }
 
@@ -681,6 +727,7 @@ export default defineUnlistedScript({
           state: isOverlayOpen() ? 'open' : 'closed',
           isOpen: isOverlayOpen(),
           mode: isOverlayOpen() ? currentGameMode : null,
+          autoPlay: isOverlayOpen() ? currentAutoPlayEnabled : null,
         });
       }
 

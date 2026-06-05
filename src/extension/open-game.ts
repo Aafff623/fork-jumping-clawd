@@ -9,6 +9,7 @@ import {
 } from './messages';
 
 const GAME_PAGE = '/game.html';
+const AUTO_PLAY_SEARCH_PARAM = 'autoPlay';
 const PAGE_GAME_OVERLAY_SCRIPT_PUBLIC_FILE = '/page-game-overlay.js';
 const PAGE_GAME_OVERLAY_SCRIPT_INJECTION_FILE =
   PAGE_GAME_OVERLAY_SCRIPT_PUBLIC_FILE.slice(1) as typeof PAGE_GAME_OVERLAY_SCRIPT_PUBLIC_FILE;
@@ -18,6 +19,7 @@ export type GameOverlayState = {
   state?: string;
   isOpen: boolean;
   mode?: GameMode | null;
+  autoPlay?: boolean | null;
 };
 
 const STANDALONE_GAME_TAB_URL_PATTERNS = [
@@ -56,6 +58,9 @@ const getStandaloneGameMode = (url: string | undefined): GameMode => {
 
   return isGameMode(mode) ? mode : DEFAULT_GAME_MODE;
 };
+
+const getStandaloneGameAutoPlay = (url: string | undefined) =>
+  getRuntimeGameUrl(url)?.searchParams.get(AUTO_PLAY_SEARCH_PARAM) === '1';
 
 const getStandaloneGameUrl = (mode: GameMode) => {
   const url = new URL(browser.runtime.getURL(GAME_PAGE));
@@ -110,6 +115,7 @@ const openStandaloneGameInTab = async (tabId: number, mode: GameMode) => {
     state: 'standalone-game-page',
     isOpen: true,
     mode,
+    autoPlay: false,
   };
 };
 
@@ -158,6 +164,7 @@ export const openGameInActiveTab = async (
         state: 'switched',
         isOpen: true,
         mode,
+        autoPlay: false,
       };
     }
 
@@ -166,6 +173,7 @@ export const openGameInActiveTab = async (
       state: 'already-open',
       isOpen: true,
       mode: currentMode,
+      autoPlay: getStandaloneGameAutoPlay(activeTab.url),
     };
   }
 
@@ -192,6 +200,7 @@ export const closeGameInActiveTab = async (): Promise<GameOverlayState> => {
       state: 'closed',
       isOpen: false,
       mode: null,
+      autoPlay: null,
     };
   }
 
@@ -201,6 +210,7 @@ export const closeGameInActiveTab = async (): Promise<GameOverlayState> => {
       state: 'already-closed',
       isOpen: false,
       mode: null,
+      autoPlay: null,
     };
   }
 
@@ -216,6 +226,7 @@ export const closeGameInActiveTab = async (): Promise<GameOverlayState> => {
       state: 'already-closed',
       isOpen: false,
       mode: null,
+      autoPlay: null,
     };
   }
 };
@@ -236,6 +247,7 @@ export const getGameStateInActiveTab = async (): Promise<GameOverlayState> => {
       state: 'standalone-game-page',
       isOpen: true,
       mode: getStandaloneGameMode(activeTab.url),
+      autoPlay: getStandaloneGameAutoPlay(activeTab.url),
     };
   }
 
@@ -245,6 +257,7 @@ export const getGameStateInActiveTab = async (): Promise<GameOverlayState> => {
       state: 'closed',
       isOpen: false,
       mode: null,
+      autoPlay: null,
     };
   }
 
@@ -260,6 +273,7 @@ export const getGameStateInActiveTab = async (): Promise<GameOverlayState> => {
       state: 'closed',
       isOpen: false,
       mode: null,
+      autoPlay: null,
     };
   }
 };
