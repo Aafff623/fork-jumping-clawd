@@ -10,6 +10,7 @@
   --focus: rgba(17, 24, 39, 0.32);
   --danger: #e11d48;
   --score-outline: #ffffff;
+  --hint-background: #ffffff;
 }
 
 :root[data-page-surface="dark"] {
@@ -19,6 +20,7 @@
   --platform-strong: rgba(255, 255, 255, 0.9);
   --platform-shadow: rgba(255, 255, 255, 0.22);
   --score-outline: #000000;
+  --hint-background: #111111;
 }
 
 :root[data-game-context="standalone"] {
@@ -31,6 +33,7 @@
   --platform-shadow: rgba(5, 5, 5, 0.16);
   --focus: rgba(5, 5, 5, 0.32);
   --score-outline: #ffffff;
+  --hint-background: #ffffff;
 }
 
 * {
@@ -183,6 +186,45 @@ body {
   border: 1px solid var(--platform-strong);
   background: transparent;
   box-shadow: none;
+}
+
+.controls-hint {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  z-index: 9;
+  display: grid;
+  width: clamp(154px, 42vw, 188px);
+  max-width: calc(100% - 16px);
+  gap: 3px;
+  padding: 10px 14px;
+  border: 2px solid var(--platform);
+  background: var(--hint-background);
+  color: var(--platform);
+  font-size: clamp(13px, 3.5vw, 16px);
+  font-weight: 750;
+  line-height: 1.2;
+  pointer-events: none;
+  text-align: center;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.controls-hint[hidden] {
+  display: none;
+}
+
+.controls-hint::after {
+  position: absolute;
+  bottom: -8px;
+  left: 50%;
+  width: 14px;
+  height: 14px;
+  border-right: 2px solid var(--platform);
+  border-bottom: 2px solid var(--platform);
+  background: var(--hint-background);
+  content: "";
+  transform: translateX(-50%) rotate(45deg);
 }
 
 .clawd-layer {

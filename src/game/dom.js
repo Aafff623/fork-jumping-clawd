@@ -93,6 +93,7 @@ export const elements = {
   scoreValue: getRequiredElement("[data-score]"),
   chargeMeter: getRequiredElement("[data-charge-meter]"),
   chargeFill: getRequiredElement("[data-charge-fill]"),
+  controlsHint: getRequiredElement("[data-controls-hint]"),
   clawdBody: getRequiredElement("[data-clawd-body]"),
   clawdSmear: getRequiredElement("[data-clawd-smear]"),
   clawdVelocity: getRequiredElement("[data-clawd-velocity]"),

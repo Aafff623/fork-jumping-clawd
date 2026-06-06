@@ -138,6 +138,7 @@ const {
   scoreValue,
   chargeMeter,
   chargeFill,
+  controlsHint,
   clawdBody,
   clawdSmear,
   clawdVelocity,
@@ -233,6 +234,27 @@ const game = {
 const RANK_VISIBLE_ROWS = 5;
 const RANK_ENTRY_LIMIT = 10;
 const PLAYER_NAME_STORAGE_KEY = "jumping-clawd:player-name";
+const CONTROLS_HINT_STORAGE_KEY_PREFIX =
+  "jumping-clawd:controls-hint-shown";
+
+const claimFirstControlsHintForMode = () => {
+  const storageKey = `${CONTROLS_HINT_STORAGE_KEY_PREFIX}:${gameMode}`;
+
+  try {
+    if (localStorage.getItem(storageKey) === "1") {
+      return false;
+    }
+
+    localStorage.setItem(storageKey, "1");
+  } catch {
+    // Keep the hint available when extension storage is unavailable.
+  }
+
+  return true;
+};
+
+let isAwaitingFirstSpace = claimFirstControlsHintForMode();
+controlsHint.hidden = !isAwaitingFirstSpace;
 
 const rankState = {
   entries: [],
@@ -1005,6 +1027,37 @@ const syncChargeMeterPosition = ({ anchor }) => {
   chargeMeter.style.bottom = `${bottom}px`;
 };
 
+const syncControlsHintPosition = ({ anchor }) => {
+  if (!isAwaitingFirstSpace || controlsHint.hidden) {
+    return;
+  }
+
+  const stagePadding = 8;
+  const hintGap = clamp(clawdSize.height * 0.08, 8, 16);
+  const halfHintWidth = controlsHint.offsetWidth / 2;
+  const maxLeft = Math.max(
+    halfHintWidth + stagePadding,
+    stageSize.width - halfHintWidth - stagePadding,
+  );
+  const maxBottom = Math.max(
+    stagePadding,
+    stageSize.height - spikeHeight - controlsHint.offsetHeight - stagePadding,
+  );
+  const left = clamp(
+    anchor.x,
+    halfHintWidth + stagePadding,
+    maxLeft,
+  );
+  const bottom = clamp(
+    anchor.surfaceY + getVisibleClawdHeight() + hintGap,
+    stagePadding,
+    maxBottom,
+  );
+
+  controlsHint.style.left = `${Math.round(left)}px`;
+  controlsHint.style.bottom = `${Math.round(bottom)}px`;
+};
+
 const setPlatformCenterAndWorldSurface = ({ id, centerX, surfaceY }) => {
   platformPositions[id].x = Math.round(centerX - getPlatformWidth(id) / 2);
   platformPositions[id].surfaceY = Math.round(surfaceY);
@@ -1461,6 +1514,7 @@ const renderStaticPose = ({ anchor, scaleX = 1, scaleY = 1, armSwing = 0 }) => {
   clawdVelocity.style.transform = "none";
   clawdSmear.style.opacity = "0";
   syncChargeMeterPosition({ anchor });
+  syncControlsHintPosition({ anchor });
   setArms(bodyLeftArm, bodyRightArm, armSwing);
 };
 
@@ -1983,6 +2037,11 @@ const renderFrame = (now) => {
     return;
   }
 
+  if (isAwaitingFirstSpace) {
+    renderReadyPose();
+    return;
+  }
+
   applyChallengeModeDrift(now);
 
   if (maybeTriggerChallengeModeFallDeath(now)) {
@@ -2284,6 +2343,16 @@ const isGameOverControlEvent = (event) =>
   event.target instanceof Node &&
   gameOverModal.contains(event.target);
 
+const dismissControlsHint = (now) => {
+  if (!initialized || !isAwaitingFirstSpace) {
+    return;
+  }
+
+  isAwaitingFirstSpace = false;
+  controlsHint.hidden = true;
+  resetChallengeModeDrift(now);
+};
+
 const beginCharge = (now) => {
   if (!initialized || (game.phase !== "ready" && game.phase !== "dead")) {
     return;
@@ -2341,11 +2410,14 @@ window.addEventListener("keydown", (event) => {
 
   event.preventDefault();
 
+  const now = performance.now();
+  dismissControlsHint(now);
+
   if (autoPlayEnabled) {
     return;
   }
 
-  beginCharge(performance.now());
+  beginCharge(now);
 });
 
 window.addEventListener("keyup", (event) => {
