@@ -237,6 +237,7 @@ const PLAYER_NAME_STORAGE_KEY = "jumping-clawd:player-name";
 const rankState = {
   entries: [],
   highlightedEntryId: null,
+  hasLoaded: false,
   isLoading: false,
   isSubmitting: false,
   hasSubmittedCurrentScore: false,
@@ -244,6 +245,7 @@ const rankState = {
 };
 
 let rankLoadId = 0;
+let rankLoadPromise = null;
 
 const getPlayerName = () => playerNameInput.value.trim();
 
@@ -294,7 +296,7 @@ const renderRankList = () => {
 
   if (entries.length === 0) {
     renderRankStatus(
-      rankState.isLoading
+      rankState.isLoading && !rankState.hasLoaded
         ? "加载中"
         : rankState.error
           ? "榜单暂时连不上"
@@ -335,35 +337,49 @@ const updateScoreSubmitState = () => {
     game.score === 0;
 };
 
-const loadRankEntries = async () => {
+const loadRankEntries = () => {
+  if (rankLoadPromise) {
+    return rankLoadPromise;
+  }
+
   const loadId = rankLoadId + 1;
   rankLoadId = loadId;
   rankState.isLoading = true;
   rankState.error = null;
   renderRankList();
 
-  try {
-    const entries = await fetchLeaderboardEntries();
+  const loadPromise = (async () => {
+    try {
+      const entries = await fetchLeaderboardEntries();
 
-    if (loadId !== rankLoadId) {
-      return;
-    }
+      if (loadId !== rankLoadId) {
+        return;
+      }
 
-    rankState.entries = entries;
-    rankState.error = null;
-  } catch (error) {
-    if (loadId !== rankLoadId) {
-      return;
-    }
+      rankState.entries = entries;
+      rankState.hasLoaded = true;
+      rankState.error = null;
+    } catch (error) {
+      if (loadId !== rankLoadId) {
+        return;
+      }
 
-    rankState.error = error;
-    console.warn("Failed to load leaderboard", error);
-  } finally {
-    if (loadId === rankLoadId) {
-      rankState.isLoading = false;
-      renderRankList();
+      rankState.error = error;
+      console.warn("Failed to load leaderboard", error);
+    } finally {
+      if (loadId === rankLoadId) {
+        rankState.isLoading = false;
+        renderRankList();
+      }
+
+      if (rankLoadPromise === loadPromise) {
+        rankLoadPromise = null;
+      }
     }
-  }
+  })();
+
+  rankLoadPromise = loadPromise;
+  return loadPromise;
 };
 
 const mergeRankEntry = (entry) => {
