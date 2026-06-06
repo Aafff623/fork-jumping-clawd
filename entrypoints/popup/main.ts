@@ -284,6 +284,7 @@ const handleStartGame = async (mode: GameMode) => {
     currentAutoPlayEnabled = state.autoPlay === true;
     await sendBackdropBlurToActiveTab(currentBackdropBlurPx);
     setStatus(getOpenStatus());
+    window.close();
   } catch (error) {
     console.warn('Failed to open Jumping Clawd game', error);
     isGameOpen = false;

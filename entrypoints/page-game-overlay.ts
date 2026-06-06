@@ -683,6 +683,12 @@ export default defineUnlistedScript({
       focusGameFrame();
     };
 
+    const handleWindowFocus = () => {
+      if (overlayHost?.isConnected) {
+        focusGameFrame();
+      }
+    };
+
     const handleWindowMessage = (event: MessageEvent) => {
       if (!overlayFrame || event.source !== overlayFrame.contentWindow) {
         return;
@@ -761,6 +767,7 @@ export default defineUnlistedScript({
     BLOCKED_PAGE_INPUT_EVENTS.forEach((eventName) => {
       window.addEventListener(eventName, handlePageInputEvent, true);
     });
+    window.addEventListener('focus', handleWindowFocus);
     window.addEventListener('message', handleWindowMessage);
     browser.runtime.onMessage.addListener(handleRuntimeMessage);
     browser.storage.onChanged.addListener(handleStorageChange);
@@ -773,6 +780,7 @@ export default defineUnlistedScript({
       BLOCKED_PAGE_INPUT_EVENTS.forEach((eventName) => {
         window.removeEventListener(eventName, handlePageInputEvent, true);
       });
+      window.removeEventListener('focus', handleWindowFocus);
       window.removeEventListener('message', handleWindowMessage);
       browser.runtime.onMessage.removeListener(handleRuntimeMessage);
       browser.storage.onChanged.removeListener(handleStorageChange);
