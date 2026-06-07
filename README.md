@@ -1,3 +1,5 @@
+![Jumping Clawd](https://img.laosunwendao.com/skill-uploads/e70a2316aaa24c0e972fe920e89e260c.png)
+
 # Jumping Clawd
 
 Jumping Clawd 是一个基于 [WXT](https://wxt.dev/) 的浏览器扩展小游戏。它可以在当前网页上以遮罩层形式启动，也可以在空白页、新标签页等场景下打开独立游戏页。
